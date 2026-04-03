@@ -1,0 +1,7 @@
+flask==3.1.0
+flask-cors==5.0.1
+ccxt==4.4.54
+alpaca-trade-api==3.2.0
+oandapyV20==0.7.2
+pandas==2.2.3
+requests==2.32.3

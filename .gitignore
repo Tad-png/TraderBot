@@ -1,0 +1,11 @@
+config.json
+trading.db
+__pycache__/
+*.pyc
+.env
+data/price_cache/
+data/backtest_results/
+logs/
+*.log
+.claude/
+instagram_session.json

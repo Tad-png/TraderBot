@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TraderBot</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app">
+    <!-- Sidebar -->
+    <nav class="sidebar">
+        <div class="sidebar-logo">
+            <h1>TraderBot</h1>
+            <span class="mode-badge mode-paper" id="modeBadge">PAPER</span>
+        </div>
+        <div class="nav-item active" data-page="overview">
+            <span>Overview</span>
+        </div>
+        <div class="nav-item" data-page="portfolio">
+            <span>Portfolio</span>
+        </div>
+        <div class="nav-item" data-page="bots">
+            <span>Bots</span>
+        </div>
+        <div class="nav-item" data-page="trades">
+            <span>Trades</span>
+        </div>
+        <div class="nav-item" data-page="backtest">
+            <span>Backtester</span>
+        </div>
+        <div class="nav-item" data-page="risk">
+            <span>Risk</span>
+        </div>
+        <div class="nav-item" data-page="settings">
+            <span>Settings</span>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="main">
+
+        <!-- OVERVIEW PAGE -->
+        <div class="page active" id="page-overview">
+            <div class="page-header">
+                <h1>Dashboard</h1>
+                <div>
+                    <button class="btn btn-sm" id="modeToggle" onclick="toggleMode()">Switch to Live</button>
+                    <button class="btn btn-sm" onclick="refreshAll()">Refresh</button>
+                </div>
+            </div>
+
+            <div class="grid-4" id="overviewStats">
+                <div class="card stat">
+                    <div class="stat-value" id="totalValue">$30,000.00</div>
+                    <div class="stat-label">Total Value</div>
+                </div>
+                <div class="card stat">
+                    <div class="stat-value" id="todayPnl">$0.00</div>
+                    <div class="stat-label">Today's P&L</div>
+                </div>
+                <div class="card stat">
+                    <div class="stat-value" id="winRate">0%</div>
+                    <div class="stat-label">Win Rate</div>
+                </div>
+                <div class="card stat">
+                    <div class="stat-value" id="activeBots">0</div>
+                    <div class="stat-label">Active Bots</div>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-header"><h2>Portfolio Value</h2></div>
+                    <div class="chart-container">
+                        <canvas id="overviewChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h2>Market Allocation</h2></div>
+                    <div class="chart-container">
+                        <canvas id="allocationChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>Recent Trades</h2>
+                    <button class="btn btn-sm" onclick="showPage('trades')">View All</button>
+                </div>
+                <table>
+                    <thead><tr><th>Time</th><th>Bot</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Price</th><th>P&L</th></tr></thead>
+                    <tbody id="recentTrades"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- PORTFOLIO PAGE -->
+        <div class="page" id="page-portfolio">
+            <div class="page-header"><h1>Portfolio</h1></div>
+
+            <div class="grid-3">
+                <div class="card stat">
+                    <div class="stat-value" id="portCash">$0</div>
+                    <div class="stat-label">Cash Balance</div>
+                </div>
+                <div class="card stat">
+                    <div class="stat-value" id="portPositions">$0</div>
+                    <div class="stat-label">Positions Value</div>
+                </div>
+                <div class="card stat">
+                    <div class="stat-value" id="portUnrealized">$0</div>
+                    <div class="stat-label">Unrealized P&L</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>Equity Curve</h2>
+                    <div class="tab-bar" style="margin:0;border:0">
+                        <span class="tab-btn active" onclick="loadPortfolioHistory('1d', this)">1D</span>
+                        <span class="tab-btn" onclick="loadPortfolioHistory('1w', this)">1W</span>
+                        <span class="tab-btn" onclick="loadPortfolioHistory('1m', this)">1M</span>
+                        <span class="tab-btn" onclick="loadPortfolioHistory('all', this)">All</span>
+                    </div>
+                </div>
+                <div class="chart-container" style="height:350px">
+                    <canvas id="equityChart"></canvas>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-header"><h2>P&L by Market</h2></div>
+                    <div id="marketBreakdown"></div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h2>P&L by Bot</h2></div>
+                    <div id="botBreakdown"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOTS PAGE -->
+        <div class="page" id="page-bots">
+            <div class="page-header">
+                <h1>Trading Bots</h1>
+                <button class="btn btn-primary" onclick="openCreateBot()">+ Create Bot</button>
+            </div>
+            <div class="grid-2" id="botCards"></div>
+        </div>
+
+        <!-- TRADES PAGE -->
+        <div class="page" id="page-trades">
+            <div class="page-header"><h1>Trade History</h1></div>
+
+            <div class="grid-4" style="margin-bottom:16px">
+                <div class="card stat">
+                    <div class="stat-value" id="trTotalTrades">0</div>
+                    <div class="stat-label">Total Trades</div>
+                </div>
+                <div class="card stat">
+                    <div class="stat-value" id="trWinRate">0%</div>
+                    <div class="stat-label">Win Rate</div>
+                </div>
+                <div class="card stat">
+                    <div class="stat-value" id="trWeekPnl">$0</div>
+                    <div class="stat-label">This Week</div>
+                </div>
+                <div class="card stat">
+                    <div class="stat-value" id="trMonthPnl">$0</div>
+                    <div class="stat-label">This Month</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <table>
+                    <thead><tr><th>Time</th><th>Bot</th><th>Market</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Price</th><th>Fee</th><th>P&L</th></tr></thead>
+                    <tbody id="allTrades"></tbody>
+                </table>
+                <div style="margin-top:12px;text-align:center">
+                    <button class="btn btn-sm" id="loadMoreTrades" onclick="loadMoreTrades()">Load More</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- BACKTEST PAGE -->
+        <div class="page" id="page-backtest">
+            <div class="page-header"><h1>Strategy Backtester</h1></div>
+
+            <div class="grid-2">
+                <div class="card">
+                    <h2 style="margin-bottom:16px">Configure Backtest</h2>
+                    <div class="form-group">
+                        <label>Strategy</label>
+                        <select id="btStrategy" onchange="updateBtParams()">
+                            <option value="grid">Grid Trading</option>
+                            <option value="dca_momentum">DCA Momentum</option>
+                            <option value="mean_reversion">Mean Reversion</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Symbol</label>
+                        <input id="btSymbol" value="BTC/USDT" placeholder="e.g. BTC/USDT">
+                    </div>
+                    <div id="btParams"></div>
+                    <button class="btn btn-primary" onclick="runBacktest()" id="btRunBtn" style="width:100%;margin-top:8px">
+                        Run Backtest
+                    </button>
+                </div>
+
+                <div class="card">
+                    <h2 style="margin-bottom:16px">Results</h2>
+                    <div id="btResults">
+                        <p class="loading">Configure and run a backtest to see results</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" id="btChartCard" style="display:none">
+                <div class="card-header"><h2>Equity Curve</h2></div>
+                <div class="chart-container" style="height:350px">
+                    <canvas id="btChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><h2>Past Backtests</h2></div>
+                <table>
+                    <thead><tr><th>Date</th><th>Strategy</th><th>Symbol</th><th>Trades</th><th>Win Rate</th><th>Return</th><th>Max DD</th><th>Sharpe</th></tr></thead>
+                    <tbody id="pastBacktests"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- RISK PAGE -->
+        <div class="page" id="page-risk">
+            <div class="page-header"><h1>Risk Management</h1></div>
+
+            <div class="grid-3">
+                <div class="card">
+                    <h3 style="margin-bottom:12px">Daily Loss</h3>
+                    <div style="display:flex;justify-content:space-between;font-size:14px">
+                        <span id="riskDailyUsed">$0</span>
+                        <span id="riskDailyLimit">/ $0</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill progress-green" id="riskDailyBar" style="width:0%"></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3 style="margin-bottom:12px">Weekly Loss</h3>
+                    <div style="display:flex;justify-content:space-between;font-size:14px">
+                        <span id="riskWeeklyUsed">$0</span>
+                        <span id="riskWeeklyLimit">/ $0</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill progress-green" id="riskWeeklyBar" style="width:0%"></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3 style="margin-bottom:12px">Drawdown</h3>
+                    <div class="stat-value" id="riskDrawdown" style="font-size:24px">0%</div>
+                    <div class="stat-label">From Peak</div>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="card">
+                    <h2 style="margin-bottom:16px">Risk Settings</h2>
+                    <div class="form-group">
+                        <label>Per-Trade Risk (%)</label>
+                        <input type="number" id="riskPerTrade" value="1.5" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label>Daily Loss Limit (%)</label>
+                        <input type="number" id="riskDailyPct" value="4" step="0.5">
+                    </div>
+                    <div class="form-group">
+                        <label>Weekly Loss Limit (%)</label>
+                        <input type="number" id="riskWeeklyPct" value="8" step="0.5">
+                    </div>
+                    <div class="form-group">
+                        <label>Kelly Fraction</label>
+                        <input type="number" id="riskKelly" value="0.25" step="0.05">
+                    </div>
+                    <button class="btn btn-primary" onclick="saveRiskSettings()" style="width:100%">Save</button>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h2>Risk Events</h2></div>
+                    <table>
+                        <thead><tr><th>Time</th><th>Event</th><th>Bot</th></tr></thead>
+                        <tbody id="riskEvents"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SETTINGS PAGE -->
+        <div class="page" id="page-settings">
+            <div class="page-header"><h1>Settings</h1></div>
+
+            <div class="grid-2">
+                <div class="card">
+                    <h2 style="margin-bottom:16px">Crypto Exchange</h2>
+                    <div class="form-group">
+                        <label>Exchange</label>
+                        <select id="cfgCryptoExchange">
+                            <option value="binance">Binance</option>
+                            <option value="bybit">Bybit</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>API Key</label>
+                        <input type="password" id="cfgCryptoKey" placeholder="Enter API key">
+                    </div>
+                    <div class="form-group">
+                        <label>API Secret</label>
+                        <input type="password" id="cfgCryptoSecret" placeholder="Enter API secret">
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2 style="margin-bottom:16px">Alpaca (US Stocks)</h2>
+                    <div class="form-group">
+                        <label>API Key</label>
+                        <input type="password" id="cfgAlpacaKey" placeholder="Enter Alpaca key">
+                    </div>
+                    <div class="form-group">
+                        <label>API Secret</label>
+                        <input type="password" id="cfgAlpacaSecret" placeholder="Enter Alpaca secret">
+                    </div>
+                    <div class="form-group">
+                        <label><input type="checkbox" id="cfgAlpacaPaper" checked> Use Paper Trading</label>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2 style="margin-bottom:16px">OANDA (Forex)</h2>
+                    <div class="form-group">
+                        <label>Account ID</label>
+                        <input id="cfgOandaAccount" placeholder="Enter account ID">
+                    </div>
+                    <div class="form-group">
+                        <label>API Token</label>
+                        <input type="password" id="cfgOandaToken" placeholder="Enter API token">
+                    </div>
+                    <div class="form-group">
+                        <label><input type="checkbox" id="cfgOandaPractice" checked> Use Practice Account</label>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2 style="margin-bottom:16px">General</h2>
+                    <div class="form-group">
+                        <label>Paper Starting Balance ($)</label>
+                        <input type="number" id="cfgPaperBalance" value="10000">
+                    </div>
+                    <div class="form-group">
+                        <label>Discord Webhook (optional)</label>
+                        <input id="cfgDiscordWebhook" placeholder="https://discord.com/api/webhooks/...">
+                    </div>
+                    <button class="btn btn-primary" onclick="saveSettings()" style="width:100%;margin-top:8px">Save All Settings</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Create Bot Modal -->
+<div class="modal-overlay" id="createBotModal">
+    <div class="modal">
+        <h2>Create New Bot</h2>
+        <div class="form-group">
+            <label>Bot Name / ID</label>
+            <input id="newBotId" placeholder="e.g. grid_btc_01">
+        </div>
+        <div class="form-group">
+            <label>Strategy</label>
+            <select id="newBotType" onchange="updateNewBotParams()">
+                <option value="grid">Grid Trading</option>
+                <option value="dca_momentum">DCA Momentum</option>
+                <option value="funding_arb">Funding Rate Arbitrage</option>
+                <option value="mean_reversion">Mean Reversion</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Market</label>
+            <select id="newBotMarket">
+                <option value="crypto">Crypto</option>
+                <option value="stock">US Stocks</option>
+                <option value="forex">Forex</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Symbol</label>
+            <input id="newBotSymbol" value="BTC/USDT" placeholder="e.g. BTC/USDT, AAPL, EUR/USD">
+        </div>
+        <div id="newBotParams"></div>
+        <div style="display:flex;gap:8px;margin-top:16px">
+            <button class="btn btn-primary" onclick="createBot()" style="flex:1">Create Bot</button>
+            <button class="btn" onclick="closeModal('createBotModal')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
