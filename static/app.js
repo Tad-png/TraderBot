@@ -267,6 +267,15 @@ async function loadBots() {
         if (b.status === 'running') {
             const priceStr = curPrice ? '$' + Number(curPrice).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '...';
             const ago = lastTime ? formatAgo(lastTime) : '';
+
+            // Show open positions detail if any
+            let positionsHtml = '';
+            if (openPos > 0 && curPrice) {
+                positionsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:12px">
+                    <span style="color:var(--text-dim)">${openPos} open trade${openPos>1?'s':''} — waiting for exit</span>
+                </div>`;
+            }
+
             statusBlock = `<div class="bot-status-bar">
                 <div class="bot-status-row">
                     <span class="bot-status-label">Live Price</span>
@@ -279,6 +288,7 @@ async function loadBots() {
                     </span>
                     <span class="activity-time">${ago}</span>
                 </div>
+                ${positionsHtml}
             </div>`;
         } else if (b.status === 'paused') {
             statusBlock = `<div class="bot-status-bar"><span style="color:var(--yellow)">Paused — safety limit or manual pause</span></div>`;
@@ -372,10 +382,10 @@ function buildSmartParams(type, amount, symbol) {
     if (type === 'scalper') {
         return {
             trade_amount: amount * 0.2,  // 20% per trade
-            take_profit_pct: 0.5,
-            stop_loss_pct: 0.3,
-            max_open_trades: 3,
-            cooldown_ticks: 2
+            take_profit_pct: 0.15,       // tiny profit target
+            stop_loss_pct: 0.2,          // tight stop
+            max_open_trades: 2,
+            max_hold_seconds: 300        // 5 min max per trade
         };
     }
     if (type === 'grid') {
