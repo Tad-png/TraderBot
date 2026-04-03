@@ -20,7 +20,7 @@ function showPage(page) {
     if (page === 'portfolio') loadPortfolio();
     if (page === 'bots') loadBots();
     if (page === 'trades') { tradeOffset = 0; loadTrades(); }
-    if (page === 'backtest') { updateBtParams(); loadPastBacktests(); }
+    if (page === 'backtest') { loadPastBacktests(); }
     if (page === 'risk') loadRisk();
     if (page === 'settings') loadSettings();
 }
@@ -83,7 +83,7 @@ async function loadOverview() {
 
     if (trades) {
         $('recentTrades').innerHTML = trades.length === 0 ?
-            '<tr><td colspan="7" style="text-align:center;color:var(--text-dim)">No trades yet. Create and start a bot!</td></tr>' :
+            '<tr><td colspan="7" style="text-align:center;color:var(--text-dim)">No trades yet. Go to Bots and create one!</td></tr>' :
             trades.map(t => `<tr>
                 <td>${fmtTime(t.created_at)}</td>
                 <td>${t.bot_id || '-'}</td>
@@ -96,7 +96,7 @@ async function loadOverview() {
     }
 
     loadOverviewChart();
-    loadAllocationChart();
+    loadActivityFeed();
 }
 
 async function loadOverviewChart() {
@@ -139,6 +139,53 @@ async function loadAllocationChart() {
             }
         }
     });
+}
+
+// ── Activity Feed ──
+
+const ACTION_LABELS = {
+    watching: 'Watching',
+    buy: 'Bought',
+    sell: 'Sold',
+    profit: 'Profit',
+    loss: 'Loss',
+    started: 'Started',
+    stopped: 'Stopped',
+    paused: 'Paused',
+    error: 'Error',
+    signal: 'Signal',
+    waiting: 'Waiting'
+};
+
+async function loadActivityFeed() {
+    const data = await api('/api/activity?limit=30');
+    if (!data || data.length === 0) {
+        $('activityFeed').innerHTML = '<p class="loading">No bot activity yet. Create and start a bot!</p>';
+        return;
+    }
+
+    $('activityFeed').innerHTML = data.map(a => {
+        const ago = formatAgo(a.time);
+        const dot = a.action || 'watching';
+        return `<div class="activity-item">
+            <div class="activity-dot dot-${dot}"></div>
+            <div class="activity-content">
+                <span class="activity-bot">${a.bot_id}</span>
+                <span class="activity-detail">${a.details || ACTION_LABELS[a.action] || a.action}</span>
+                ${a.price ? `<span class="activity-price"> @ $${Number(a.price).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>` : ''}
+            </div>
+            <span class="activity-time">${ago}</span>
+        </div>`;
+    }).join('');
+}
+
+function formatAgo(ts) {
+    const sec = Math.floor(Date.now() / 1000 - ts);
+    if (sec < 5) return 'just now';
+    if (sec < 60) return sec + 's ago';
+    if (sec < 3600) return Math.floor(sec / 60) + 'm ago';
+    if (sec < 86400) return Math.floor(sec / 3600) + 'h ago';
+    return Math.floor(sec / 86400) + 'd ago';
 }
 
 // ── Portfolio ──
@@ -205,22 +252,54 @@ async function loadBots() {
     }
 
     $('botCards').innerHTML = bots.map(b => {
-        const pnl = b.live_status ? b.live_status.realized_pnl : 0;
-        const trades = b.live_status ? b.live_status.trade_count : 0;
-        const wr = b.live_status ? b.live_status.win_rate : 0;
-        return `<div class="bot-card">
+        const ls = b.live_status || {};
+        const pnl = ls.realized_pnl || 0;
+        const trades = ls.trade_count || 0;
+        const wr = ls.win_rate || 0;
+        const openPos = ls.open_positions || 0;
+        const curPrice = ls.current_price;
+        const lastAction = ls.last_action;
+        const lastDetail = ls.last_detail;
+        const lastTime = ls.last_time;
+
+        // Build the status bar for running bots
+        let statusBlock = '';
+        if (b.status === 'running') {
+            const priceStr = curPrice ? '$' + Number(curPrice).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '...';
+            const ago = lastTime ? formatAgo(lastTime) : '';
+            statusBlock = `<div class="bot-status-bar">
+                <div class="bot-status-row">
+                    <span class="bot-status-label">Live Price</span>
+                    <span class="live-price">${priceStr}</span>
+                </div>
+                <div class="bot-status-row" style="margin-top:6px">
+                    <span class="thinking">
+                        <span class="thinking-dots"><span></span><span></span><span></span></span>
+                        ${lastDetail || 'Watching...'}
+                    </span>
+                    <span class="activity-time">${ago}</span>
+                </div>
+            </div>`;
+        } else if (b.status === 'paused') {
+            statusBlock = `<div class="bot-status-bar"><span style="color:var(--yellow)">Paused — safety limit or manual pause</span></div>`;
+        } else {
+            statusBlock = `<div class="bot-status-bar"><span style="color:var(--text-dim)">Stopped — hit Start to begin</span></div>`;
+        }
+
+        return `<div class="bot-card ${b.status === 'running' ? 'is-running' : ''}">
             <div class="bot-card-header">
                 <div>
                     <div class="bot-card-name">${b.id}</div>
-                    <div class="bot-card-symbol">${b.bot_type} / ${b.symbol}</div>
+                    <div class="bot-card-symbol">${STRATEGY_NAMES[b.bot_type] || b.bot_type} / ${b.symbol}</div>
                 </div>
                 <span class="badge badge-${b.status}">${b.status}</span>
             </div>
             <div class="bot-card-pnl ${pnlClass(pnl)}">${pnlSign(pnl)}${fmt(pnl)}</div>
+            ${statusBlock}
             <div class="bot-card-meta">
                 <span>${trades} trades</span>
-                <span>Win: ${wr}%</span>
-                <span>${b.market}</span>
+                <span>Won: ${wr}%</span>
+                <span>${openPos} open</span>
             </div>
             <div style="margin-top:12px;display:flex;gap:6px">
                 ${b.status !== 'running' ?
@@ -245,68 +324,135 @@ async function deleteBot(id) {
 }
 
 function openCreateBot() {
+    // Reset the form completely
+    $('newBotId').value = '';
+    $('newBotSymbol').value = 'BTC/USDT';
+    $('newBotAmount').value = 100;
+    document.querySelectorAll('.strat-card').forEach((c, i) => {
+        c.classList.toggle('active', i === 0);
+    });
+    document.querySelectorAll('.pill').forEach(p => {
+        p.classList.toggle('active', p.textContent === '$100');
+    });
     $('createBotModal').classList.add('active');
-    updateNewBotParams();
 }
 
 function closeModal(id) { $(id).classList.remove('active'); }
 
-function updateNewBotParams() {
-    const type = $('newBotType').value;
-    const params = BOT_PARAMS[type] || [];
-    $('newBotParams').innerHTML = params.map(p =>
-        `<div class="form-group">
-            <label>${p.label}</label>
-            <input type="number" id="nbp_${p.key}" value="${p.default}" step="${p.step || 1}">
-        </div>`
-    ).join('');
+// Simple strategy names → internal types
+const STRATEGY_NAMES = {
+    grid: 'Bounce Trader',
+    dca_momentum: 'Dip Buyer',
+    funding_arb: 'Passive Earner',
+    mean_reversion: 'Range Rider'
+};
+
+function selectStrategy(el) {
+    document.querySelectorAll('.strat-card').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
 }
 
+function setAmount(val) {
+    $('newBotAmount').value = val;
+    document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    event.target.classList.add('active');
+}
+
+function updateNewBotName() {
+    const symbol = $('newBotSymbol').value;
+    const coin = symbol.split('/')[0].toLowerCase();
+    const strat = document.querySelector('.strat-card.active');
+    const type = strat ? strat.dataset.type : 'grid';
+    $('newBotId').value = coin + '-' + type.replace('_', '-');
+}
+
+// Smart defaults: user just picks amount, we figure out the rest
+function buildSmartParams(type, amount, symbol) {
+    if (type === 'grid') {
+        // Auto-calculate grid range as +/- 5% from a reference price
+        // The bot will adjust on first tick anyway
+        return {
+            upper_price: 100000, // placeholder, bot adjusts
+            lower_price: 80000,
+            grid_count: 10,
+            investment_amount: amount
+        };
+    }
+    if (type === 'dca_momentum') {
+        return {
+            base_amount: amount * 0.1, // 10% per buy
+            dca_multiplier: 1.5,
+            rsi_buy_threshold: 30,
+            rsi_sell_threshold: 70,
+            take_profit_pct: 5,
+            stop_loss_pct: 3
+        };
+    }
+    if (type === 'funding_arb') {
+        return {
+            position_size: amount,
+            min_funding_rate: 0.01,
+            exit_funding_rate: 0.005
+        };
+    }
+    if (type === 'mean_reversion') {
+        return {
+            bb_period: 20,
+            bb_std: 2,
+            position_size: amount * 0.2,
+            take_profit_pct: 2,
+            stop_loss_pct: 1.5,
+            max_positions: 3
+        };
+    }
+    return {};
+}
+
+// Backtest param config (kept technical for the backtester tab only)
 const BOT_PARAMS = {
     grid: [
-        { key: 'upper_price', label: 'Upper Price ($)', default: 70000, step: 100 },
-        { key: 'lower_price', label: 'Lower Price ($)', default: 60000, step: 100 },
-        { key: 'grid_count', label: 'Grid Levels', default: 10 },
-        { key: 'investment_amount', label: 'Investment ($)', default: 100, step: 10 }
+        { key: 'upper_price', label: 'Highest price to trade ($)', default: 70000, step: 100 },
+        { key: 'lower_price', label: 'Lowest price to trade ($)', default: 60000, step: 100 },
+        { key: 'grid_count', label: 'How many buy/sell points', default: 10 },
+        { key: 'investment_amount', label: 'Total to invest ($)', default: 100, step: 10 }
     ],
     dca_momentum: [
-        { key: 'base_amount', label: 'Base Buy Amount ($)', default: 10, step: 1 },
-        { key: 'dca_multiplier', label: 'DCA Multiplier', default: 1.5, step: 0.1 },
-        { key: 'rsi_buy_threshold', label: 'RSI Buy (oversold)', default: 30 },
-        { key: 'rsi_sell_threshold', label: 'RSI Sell (overbought)', default: 70 }
+        { key: 'base_amount', label: 'Buy amount each time ($)', default: 10, step: 1 },
+        { key: 'dca_multiplier', label: 'Buy more on bigger dips (1 = same amount)', default: 1.5, step: 0.1 },
+        { key: 'rsi_buy_threshold', label: 'How oversold to trigger buy (lower = pickier)', default: 30 },
+        { key: 'rsi_sell_threshold', label: 'How overbought to trigger sell', default: 70 }
     ],
     funding_arb: [
-        { key: 'position_size', label: 'Position Size ($)', default: 100, step: 10 },
-        { key: 'min_funding_rate', label: 'Min Funding Rate (%)', default: 0.01, step: 0.001 },
-        { key: 'exit_funding_rate', label: 'Exit Funding Rate (%)', default: 0.005, step: 0.001 }
+        { key: 'position_size', label: 'Amount to put in ($)', default: 100, step: 10 },
+        { key: 'min_funding_rate', label: 'Min payment to enter (%)', default: 0.01, step: 0.001 },
+        { key: 'exit_funding_rate', label: 'Exit when payment drops to (%)', default: 0.005, step: 0.001 }
     ],
     mean_reversion: [
-        { key: 'bb_period', label: 'Bollinger Period', default: 20 },
-        { key: 'bb_std', label: 'Std Deviations', default: 2, step: 0.5 },
-        { key: 'position_size', label: 'Position Size ($)', default: 50, step: 10 },
-        { key: 'take_profit_pct', label: 'Take Profit (%)', default: 2, step: 0.5 },
-        { key: 'stop_loss_pct', label: 'Stop Loss (%)', default: 1.5, step: 0.5 }
+        { key: 'position_size', label: 'Amount per trade ($)', default: 50, step: 10 },
+        { key: 'take_profit_pct', label: 'Sell when up by (%)', default: 2, step: 0.5 },
+        { key: 'stop_loss_pct', label: 'Sell if down by (%)', default: 1.5, step: 0.5 }
     ]
 };
 
 async function createBot() {
-    const type = $('newBotType').value;
-    const paramDefs = BOT_PARAMS[type] || [];
-    const params = {};
-    paramDefs.forEach(p => {
-        const el = $('nbp_' + p.key);
-        if (el) params[p.key] = parseFloat(el.value);
-    });
+    const strat = document.querySelector('.strat-card.active');
+    const type = strat ? strat.dataset.type : 'grid';
+    const symbol = $('newBotSymbol').value;
+    const amount = parseFloat($('newBotAmount').value) || 100;
+    const userInput = $('newBotId').value.trim();
+    const coin = symbol.split('/')[0].toLowerCase();
+    const uid = Date.now().toString(36).slice(-4);
+    const botId = userInput ? userInput + '-' + uid : coin + '-' + type.replace('_', '-') + '-' + uid;
+
+    const params = buildSmartParams(type, amount, symbol);
 
     const body = {
-        bot_id: $('newBotId').value,
+        bot_id: botId,
         bot_type: type,
-        market: $('newBotMarket').value,
-        symbol: $('newBotSymbol').value,
+        market: 'crypto',
+        symbol: symbol,
         params
     };
-
-    if (!body.bot_id) { alert('Enter a bot name/ID'); return; }
 
     await api('/api/bots', { method: 'POST', body });
     closeModal('createBotModal');
@@ -332,11 +478,10 @@ async function loadTrades() {
 
     if (trades) {
         const html = trades.length === 0 ?
-            '<tr><td colspan="9" style="text-align:center;color:var(--text-dim)">No trades yet</td></tr>' :
+            '<tr><td colspan="8" style="text-align:center;color:var(--text-dim)">No trades yet</td></tr>' :
             trades.map(t => `<tr>
                 <td>${fmtTime(t.created_at)}</td>
                 <td>${t.bot_id || '-'}</td>
-                <td>${t.market}</td>
                 <td>${t.symbol}</td>
                 <td class="${t.side === 'buy' ? 'positive' : 'negative'}">${t.side.toUpperCase()}</td>
                 <td>${Number(t.quantity).toFixed(6)}</td>
@@ -360,29 +505,21 @@ function loadMoreTrades() {
 
 // ── Backtester ──
 
-function updateBtParams() {
-    const type = $('btStrategy').value;
-    const params = BOT_PARAMS[type] || [];
-    $('btParams').innerHTML = params.map(p =>
-        `<div class="form-group">
-            <label>${p.label}</label>
-            <input type="number" id="btp_${p.key}" value="${p.default}" step="${p.step || 1}">
-        </div>`
-    ).join('');
+function selectBtStrategy(el) {
+    document.querySelectorAll('#btStrategyCards .strat-card').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
 }
 
 async function runBacktest() {
     const btn = $('btRunBtn');
-    btn.textContent = 'Running...';
+    btn.textContent = 'Testing...';
     btn.disabled = true;
 
-    const type = $('btStrategy').value;
-    const paramDefs = BOT_PARAMS[type] || [];
-    const params = {};
-    paramDefs.forEach(p => {
-        const el = $('btp_' + p.key);
-        if (el) params[p.key] = parseFloat(el.value);
-    });
+    const strat = document.querySelector('#btStrategyCards .strat-card.active');
+    const type = strat ? strat.dataset.type : 'grid';
+
+    // Smart defaults — user doesn't need to know these
+    const params = buildSmartParams(type, 100, $('btSymbol').value);
 
     const result = await api('/api/backtest', {
         method: 'POST',
@@ -394,27 +531,30 @@ async function runBacktest() {
         }
     });
 
-    btn.textContent = 'Run Backtest';
+    btn.textContent = 'Run Test';
     btn.disabled = false;
 
     if (!result || result.error) {
-        $('btResults').innerHTML = `<p style="color:var(--red)">${result?.error || 'Backtest failed'}</p>`;
+        $('btResults').innerHTML = `<p style="color:var(--red)">${result?.error || 'Test failed'}</p>`;
         return;
     }
 
+    const verdict = result.total_return > 0 ?
+        `<div style="padding:10px;background:rgba(63,185,80,0.1);border-radius:6px;margin-bottom:12px;font-size:14px">This strategy <strong class="positive">made money</strong> — ${result.total_return}% return</div>` :
+        `<div style="padding:10px;background:rgba(248,81,73,0.1);border-radius:6px;margin-bottom:12px;font-size:14px">This strategy <strong class="negative">lost money</strong> — ${result.total_return}% return</div>`;
+
     $('btResults').innerHTML = `
+        ${verdict}
         <div class="grid-2" style="gap:10px">
-            <div class="stat"><div class="stat-value" style="font-size:20px">${result.total_trades}</div><div class="stat-label">Trades</div></div>
-            <div class="stat"><div class="stat-value ${pnlClass(result.total_return)}" style="font-size:20px">${result.total_return}%</div><div class="stat-label">Return</div></div>
-            <div class="stat"><div class="stat-value" style="font-size:20px">${result.win_rate}%</div><div class="stat-label">Win Rate</div></div>
-            <div class="stat"><div class="stat-value" style="font-size:20px">${result.profit_factor}</div><div class="stat-label">Profit Factor</div></div>
-            <div class="stat"><div class="stat-value negative" style="font-size:20px">${result.max_drawdown}%</div><div class="stat-label">Max Drawdown</div></div>
-            <div class="stat"><div class="stat-value" style="font-size:20px">${result.sharpe_ratio}</div><div class="stat-label">Sharpe Ratio</div></div>
+            <div class="stat"><div class="stat-value" style="font-size:20px">${result.total_trades}</div><div class="stat-label">Trades Made</div></div>
+            <div class="stat"><div class="stat-value" style="font-size:20px">${result.win_rate}%</div><div class="stat-label">Trades Won</div></div>
+            <div class="stat"><div class="stat-value negative" style="font-size:20px">${result.max_drawdown}%</div><div class="stat-label">Worst Dip</div></div>
+            <div class="stat"><div class="stat-value" style="font-size:20px">${result.profit_factor}</div><div class="stat-label">Profit Score</div></div>
         </div>
         <div style="margin-top:12px;font-size:13px;color:var(--text-dim)">
-            Final Balance: <strong class="${pnlClass(result.total_return)}">${fmt(result.final_balance)}</strong> |
-            Best: <span class="positive">${fmt(result.best_trade)}</span> |
-            Worst: <span class="negative">${fmt(result.worst_trade)}</span>
+            Ended with: <strong class="${pnlClass(result.total_return)}">${fmt(result.final_balance)}</strong> |
+            Best trade: <span class="positive">${fmt(result.best_trade)}</span> |
+            Worst trade: <span class="negative">${fmt(result.worst_trade)}</span>
         </div>
     `;
 
@@ -430,18 +570,16 @@ async function runBacktest() {
 async function loadPastBacktests() {
     const results = await api('/api/backtest/results');
     if (!results || results.length === 0) {
-        $('pastBacktests').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-dim)">No backtests run yet</td></tr>';
+        $('pastBacktests').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-dim)">No tests run yet</td></tr>';
         return;
     }
     $('pastBacktests').innerHTML = results.map(r => `<tr>
         <td>${fmtTime(r.created_at)}</td>
-        <td>${r.bot_type}</td>
+        <td>${STRATEGY_NAMES[r.bot_type] || r.bot_type}</td>
         <td>${r.symbol}</td>
         <td>${r.total_trades}</td>
         <td>${r.win_rate}%</td>
-        <td class="${pnlClass(r.total_return)}">${r.total_return}%</td>
-        <td class="negative">${r.max_drawdown}%</td>
-        <td>${r.sharpe_ratio}</td>
+        <td class="${pnlClass(r.total_return)}">${pnlSign(r.total_return)}${r.total_return}%</td>
     </tr>`).join('');
 }
 
@@ -471,7 +609,7 @@ async function loadRisk() {
 
     if (events) {
         $('riskEvents').innerHTML = events.length === 0 ?
-            '<tr><td colspan="3" style="text-align:center;color:var(--text-dim)">No risk events</td></tr>' :
+            '<tr><td colspan="3" style="text-align:center;color:var(--text-dim)">No safety events yet — that\'s good!</td></tr>' :
             events.map(e => `<tr>
                 <td>${fmtTime(e.created_at)}</td>
                 <td>${e.event_type}</td>
@@ -597,8 +735,8 @@ function refreshAll() {
     if (activePage) showPage(activePage);
 }
 
-// Auto-refresh every 30 seconds
-setInterval(refreshAll, 30000);
+// Auto-refresh every 10 seconds for live feel
+setInterval(refreshAll, 10000);
 
 // Initial load
 loadOverview();

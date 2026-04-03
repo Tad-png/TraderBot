@@ -4,6 +4,7 @@ import logging
 from modules.bots.base_bot import BaseBot
 from modules.order_manager import place_order
 from modules import db
+from modules.activity import log_activity
 
 logger = logging.getLogger('traderbot.bot.grid')
 
@@ -130,6 +131,7 @@ class GridBot(BaseBot):
                 entry_price=fill['price'],
                 is_paper=1
             )
+            log_activity(self.bot_id, 'buy', f'Bought at ${actual_price:.2f}', price=actual_price)
             logger.info(f"Grid BUY at ${actual_price:.2f} (level ${level:.2f})")
         else:
             logger.warning(f"Grid buy failed: {fill.get('error')}")
@@ -175,6 +177,8 @@ class GridBot(BaseBot):
             if next_level >= self.lower:
                 self.buy_levels.add(round(next_level, 8))
 
+            action = 'profit' if pnl > 0 else 'loss'
+            log_activity(self.bot_id, action, f'Sold at ${actual_price:.2f} — {"+" if pnl>0 else ""}${pnl:.2f}', price=actual_price)
             logger.info(f"Grid SELL at ${actual_price:.2f} (level ${level:.2f}), P&L: ${pnl:.4f}")
         else:
             logger.warning(f"Grid sell failed: {fill.get('error')}")

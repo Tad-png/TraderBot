@@ -5,6 +5,7 @@ from modules.bots.base_bot import BaseBot
 from modules.order_manager import place_order
 from modules.indicators import bollinger_bands, rsi
 from modules import db
+from modules.activity import log_activity
 
 logger = logging.getLogger('traderbot.bot.meanrev')
 
@@ -86,10 +87,8 @@ class MeanReversionBot(BaseBot):
                     self.bot_id, self.market, self.symbol,
                     'long', quantity, fill['price']
                 )
-                logger.info(
-                    f"MeanRev BUY: ${current_price:.4f} (lower band ${current_lower:.4f}, "
-                    f"RSI={current_rsi:.1f})"
-                )
+                log_activity(self.bot_id, 'buy', f'Price hit bottom range — buying', price=current_price)
+                logger.info(f"MeanRev BUY: ${current_price:.4f}")
 
         # Sell signal: price at or above upper band + RSI confirms
         elif current_price >= current_upper and current_rsi > 60:
@@ -130,4 +129,6 @@ class MeanReversionBot(BaseBot):
                 )
                 conn.commit()
                 conn.close()
+            action = 'profit' if pnl and pnl > 0 else 'loss'
+            log_activity(self.bot_id, action, f'Sold — {reason}, {"+" if pnl and pnl>0 else ""}${pnl:.2f}' if pnl else f'Sold — {reason}', price=price)
             logger.info(f"MeanRev CLOSE: {reason}, P&L=${pnl:.4f}")

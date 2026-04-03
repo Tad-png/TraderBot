@@ -18,9 +18,8 @@ def get_portfolio_value(exchange_instances=None):
     positions_value = 0
     unrealized_pnl = 0
 
-    # Cash balances
-    for market in ['crypto', 'stock', 'forex']:
-        cash += state.get_paper_balance(market)
+    # Cash balance (crypto only)
+    cash = state.get_paper_balance('crypto')
 
     # Open positions
     positions = db.get_open_positions()
@@ -51,7 +50,7 @@ def get_portfolio_breakdown(exchange_instances=None):
     by_market = {}
     by_bot = {}
 
-    for market in ['crypto', 'stock', 'forex']:
+    for market in ['crypto']:
         balance = state.get_paper_balance(market)
         market_positions = [p for p in positions if p['market'] == market]
         pos_value = sum(p['quantity'] * (p.get('current_price') or p['entry_price'])

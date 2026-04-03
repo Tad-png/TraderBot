@@ -326,6 +326,144 @@ input:focus, select:focus {
     color: var(--text-dim);
 }
 
+/* Strategy cards */
+.strategy-cards { display: flex; flex-direction: column; gap: 8px; }
+
+.strat-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.strat-card:hover { border-color: var(--accent); background: var(--bg-hover); }
+.strat-card.active { border-color: var(--accent); background: rgba(88, 166, 255, 0.08); }
+.strat-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.strat-desc { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+.strat-risk { font-size: 11px; margin-top: 6px; font-weight: 600; color: var(--green); }
+
+/* Amount pills */
+.amount-pills { display: flex; gap: 8px; }
+
+.pill {
+    padding: 6px 16px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.15s;
+}
+
+.pill:hover { border-color: var(--accent); }
+.pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Activity feed */
+.activity-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+}
+
+.activity-item:last-child { border-bottom: none; }
+
+.activity-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+}
+
+.dot-watching { background: var(--blue); }
+.dot-buy { background: var(--green); }
+.dot-sell { background: var(--orange); }
+.dot-profit { background: var(--green); }
+.dot-loss { background: var(--red); }
+.dot-started { background: var(--purple); }
+.dot-stopped { background: var(--text-dim); }
+.dot-paused { background: var(--yellow); }
+.dot-error { background: var(--red); }
+.dot-signal { background: var(--blue); }
+
+.activity-content { flex: 1; min-width: 0; }
+.activity-bot { font-weight: 600; color: var(--accent); }
+.activity-detail { color: var(--text-dim); }
+.activity-time { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+.activity-price { font-weight: 600; font-family: monospace; }
+
+/* Pulse animation for live indicator */
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.badge-running { animation: pulse 2s infinite; }
+
+/* Thinking indicator */
+.thinking {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--accent);
+}
+
+.thinking-dots {
+    display: inline-flex;
+    gap: 3px;
+}
+
+.thinking-dots span {
+    width: 5px;
+    height: 5px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: bounce 1.4s infinite;
+}
+
+.thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes bounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; }
+    40% { transform: scale(1); opacity: 1; }
+}
+
+/* Live price ticker */
+.live-price {
+    font-family: monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 0.5px;
+}
+
+/* Bot card running state */
+.bot-card.is-running {
+    border-color: rgba(88, 166, 255, 0.3);
+    box-shadow: 0 0 15px rgba(88, 166, 255, 0.05);
+}
+
+.bot-status-bar {
+    background: var(--bg);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 8px 0;
+}
+
+.bot-status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.bot-status-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }

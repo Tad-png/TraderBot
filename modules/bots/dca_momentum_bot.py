@@ -6,6 +6,7 @@ from modules.order_manager import place_order
 from modules.indicators import rsi, ema
 from modules.data_feed import get_candles
 from modules import db
+from modules.activity import log_activity
 
 logger = logging.getLogger('traderbot.bot.dca')
 
@@ -87,10 +88,8 @@ class DCAMomentumBot(BaseBot):
                     self.bot_id, self.market, self.symbol,
                     'long', quantity, fill['price']
                 )
-                logger.info(
-                    f"DCA BUY #{self.consecutive_dips}: ${buy_amount:.2f} "
-                    f"({quantity:.6f} @ ${current_price:.2f}, RSI={current_rsi:.1f})"
-                )
+                log_activity(self.bot_id, 'buy', f'Dip #{self.consecutive_dips} — bought ${buy_amount:.2f} worth', price=current_price)
+                logger.info(f"DCA BUY #{self.consecutive_dips}: ${buy_amount:.2f}")
 
         # Sell signal: RSI above threshold
         elif current_rsi > self.rsi_sell:
@@ -136,4 +135,6 @@ class DCAMomentumBot(BaseBot):
                 )
                 conn.commit()
                 conn.close()
+            action = 'profit' if pnl and pnl > 0 else 'loss'
+            log_activity(self.bot_id, action, f'Sold — {reason}, {"+" if pnl and pnl>0 else ""}${pnl:.2f}' if pnl else f'Sold — {reason}', price=price)
             logger.info(f"DCA SELL: {reason}, P&L=${pnl:.4f}")

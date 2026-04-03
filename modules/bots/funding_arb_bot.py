@@ -4,6 +4,7 @@ import logging
 from modules.bots.base_bot import BaseBot
 from modules.order_manager import place_order
 from modules import db
+from modules.activity import log_activity
 
 logger = logging.getLogger('traderbot.bot.funding')
 
@@ -91,10 +92,8 @@ class FundingArbBot(BaseBot):
         self.entry_price = price
         self.total_funding_collected = 0
 
-        logger.info(
-            f"Funding arb ENTERED: ${self.position_size:.2f} at ${price:.2f}, "
-            f"funding rate {funding_rate:.4f}%"
-        )
+        log_activity(self.bot_id, 'buy', f'Entered position — collecting {funding_rate:.4f}% every 8hrs', price=price)
+        logger.info(f"Funding arb ENTERED: ${self.position_size:.2f} at ${price:.2f}")
 
     def _exit_position(self, price, reason):
         """Close the delta-neutral position."""
@@ -119,10 +118,9 @@ class FundingArbBot(BaseBot):
                 conn.close()
 
         self.is_in_position = False
-        logger.info(
-            f"Funding arb EXITED: {reason}, "
-            f"funding collected: ${self.total_funding_collected:.4f}"
-        )
+        action = 'profit' if self.total_funding_collected > 0 else 'loss'
+        log_activity(self.bot_id, action, f'Exited — collected ${self.total_funding_collected:.2f} in funding', price=price)
+        logger.info(f"Funding arb EXITED: {reason}")
 
     def _collect_funding(self, funding_rate):
         """Simulate funding payment collection (every 8 hours in real life)."""

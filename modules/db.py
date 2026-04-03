@@ -11,7 +11,7 @@ DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'trading.db')
 
 def get_conn():
     """Get a new SQLite connection (thread-safe pattern)."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
@@ -378,11 +378,15 @@ def get_pnl_summary():
         "SELECT COUNT(*) as c FROM trades WHERE pnl IS NOT NULL"
     ).fetchone()['c']
 
+    today_pnl = sum_pnl(today)
+    week_pnl = sum_pnl(week_ago)
+    month_pnl = sum_pnl(month_ago)
+
     conn.close()
     return {
-        'today_pnl': sum_pnl(today),
-        'week_pnl': sum_pnl(week_ago),
-        'month_pnl': sum_pnl(month_ago),
+        'today_pnl': today_pnl,
+        'week_pnl': week_pnl,
+        'month_pnl': month_pnl,
         'all_time_pnl': total_row['total'] if total_row else 0,
         'total_trades': trade_count,
         'win_rate': (win_count / total_with_pnl * 100) if total_with_pnl > 0 else 0

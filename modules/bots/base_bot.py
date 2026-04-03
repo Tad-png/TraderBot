@@ -6,6 +6,7 @@ import logging
 from abc import ABC, abstractmethod
 from modules import db, state
 from modules.risk_manager import should_pause_bot
+from modules.activity import log_activity, get_bot_state
 
 logger = logging.getLogger('traderbot.bot')
 
@@ -65,6 +66,7 @@ class BaseBot(ABC):
         with state.bots_lock:
             state.active_bots[self.bot_id] = self
 
+        log_activity(self.bot_id, 'started', f'Watching {self.symbol}')
         logger.info(f"Bot {self.bot_id} started ({self.__class__.__name__})")
 
     def pause(self):
@@ -72,6 +74,7 @@ class BaseBot(ABC):
         self.status = 'paused'
         self._stop_event.set()
         db.update_bot_status(self.bot_id, 'paused')
+        log_activity(self.bot_id, 'paused', 'Bot paused')
         logger.info(f"Bot {self.bot_id} paused")
 
     def stop(self):
@@ -79,6 +82,7 @@ class BaseBot(ABC):
         self.status = 'stopped'
         self._stop_event.set()
         db.update_bot_status(self.bot_id, 'stopped')
+        log_activity(self.bot_id, 'stopped', 'Bot stopped')
 
         with state.bots_lock:
             state.active_bots.pop(self.bot_id, None)
@@ -92,6 +96,10 @@ class BaseBot(ABC):
         realized_pnl = sum(t['pnl'] for t in trades if t['pnl'] is not None)
         win_count = sum(1 for t in trades if t['pnl'] is not None and t['pnl'] > 0)
         total_with_pnl = sum(1 for t in trades if t['pnl'] is not None)
+        positions = db.get_open_positions(bot_id=self.bot_id)
+
+        # Get latest activity
+        last = get_bot_state(self.bot_id)
 
         return {
             'bot_id': self.bot_id,
@@ -102,7 +110,12 @@ class BaseBot(ABC):
             'params': self.params,
             'realized_pnl': round(realized_pnl, 2),
             'trade_count': len(trades),
-            'win_rate': round(win_count / total_with_pnl * 100, 1) if total_with_pnl > 0 else 0
+            'win_rate': round(win_count / total_with_pnl * 100, 1) if total_with_pnl > 0 else 0,
+            'open_positions': len(positions),
+            'current_price': last.get('price') if last else None,
+            'last_action': last.get('action') if last else None,
+            'last_detail': last.get('details') if last else None,
+            'last_time': last.get('time') if last else None,
         }
 
     def _run_loop(self):
@@ -116,6 +129,7 @@ class BaseBot(ABC):
                 # Check risk limits
                 pause_needed, reason = should_pause_bot(self.bot_id)
                 if pause_needed:
+                    log_activity(self.bot_id, 'paused', f'Safety limit hit: {reason}')
                     logger.warning(f"Bot {self.bot_id} auto-paused: {reason}")
                     self.pause()
                     break
@@ -123,9 +137,12 @@ class BaseBot(ABC):
                 # Get current price
                 price = get_current_price(self.market, self.symbol)
                 if price is None:
-                    logger.warning(f"Bot {self.bot_id}: could not fetch price for {self.symbol}")
+                    log_activity(self.bot_id, 'error', f'Could not get price for {self.symbol}')
                     self._stop_event.wait(self.tick_interval)
                     continue
+
+                # Log that we're watching
+                log_activity(self.bot_id, 'watching', f'Checking {self.symbol}', price=price)
 
                 # Execute strategy tick
                 self.tick(price)

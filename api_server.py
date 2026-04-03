@@ -12,6 +12,7 @@ from modules.portfolio import get_portfolio_value, get_portfolio_breakdown, star
 from modules.risk_manager import get_risk_status
 from modules.data_feed import get_current_price, get_candles
 from modules.order_manager import place_order
+from modules.activity import get_activities
 
 # Logging
 logging.basicConfig(
@@ -44,7 +45,40 @@ def init_app():
     interval = config.get('portfolio_snapshot_interval_minutes', 5)
     start_snapshot_thread(interval)
 
+    # Auto-restart bots that were running before shutdown
+    _restart_saved_bots(config)
+
     logger.info(f"TraderBot initialized — mode: {state.trading_mode}")
+
+
+def _restart_saved_bots(config):
+    """Restart any bots that were running when the server last shut down."""
+    saved_bots = db.get_all_bot_configs()
+    tick_config = config.get('bot_tick_interval_seconds', {})
+    restarted = 0
+
+    for bot_cfg in saved_bots:
+        if bot_cfg['status'] == 'running':
+            try:
+                bot_class = _get_bot_class(bot_cfg['bot_type'])
+                if not bot_class:
+                    continue
+                tick_interval = tick_config.get(bot_cfg['market'], 30)
+                bot = bot_class(
+                    bot_id=bot_cfg['id'],
+                    market=bot_cfg['market'],
+                    symbol=bot_cfg['symbol'],
+                    params=bot_cfg['params'],
+                    tick_interval=tick_interval
+                )
+                bot.start()
+                restarted += 1
+                logger.info(f"Auto-restarted bot: {bot_cfg['id']}")
+            except Exception as e:
+                logger.error(f"Failed to restart bot {bot_cfg['id']}: {e}")
+
+    if restarted:
+        logger.info(f"Restarted {restarted} bot(s) from previous session")
 
 
 # ── Dashboard ──
@@ -239,6 +273,15 @@ def bot_trades(bot_id):
     return jsonify(result)
 
 
+# ── Activity Feed ──
+
+@app.route('/api/activity')
+def activity():
+    limit = int(request.args.get('limit', 50))
+    bot_id = request.args.get('bot')
+    return jsonify(get_activities(limit=limit, bot_id=bot_id))
+
+
 # ── Risk ──
 
 @app.route('/api/risk')
@@ -301,7 +344,8 @@ def run_backtest():
         return jsonify(results), 400
 
     # Save to DB
-    db.get_conn().execute(
+    conn = db.get_conn()
+    conn.execute(
         """INSERT INTO backtest_runs (bot_type, symbol, params, start_date, end_date,
            win_rate, profit_factor, max_drawdown, sharpe_ratio, total_return,
            total_trades, results_file) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -310,7 +354,8 @@ def run_backtest():
          results.get('sharpe_ratio'), results.get('total_return'), results.get('total_trades'),
          results.get('results_file'))
     )
-    db.get_conn().commit()
+    conn.commit()
+    conn.close()
 
     return jsonify(results)
 

@@ -18,13 +18,11 @@ db_lock = threading.Lock()
 
 
 def init_paper_balances(starting_balance):
-    """Initialize paper balances for all markets."""
+    """Initialize paper balances (crypto only)."""
     global paper_balances
     with balance_lock:
         paper_balances = {
             "crypto": float(starting_balance),
-            "stock": float(starting_balance),
-            "forex": float(starting_balance),
         }
 
 
