@@ -195,7 +195,11 @@
                     <div class="form-group">
                         <label>Pick a strategy</label>
                         <div class="strategy-cards" id="btStrategyCards">
-                            <div class="strat-card active" data-type="scalper" onclick="selectBtStrategy(this)">
+                            <div class="strat-card active" data-type="hunter" onclick="selectBtStrategy(this)" style="border-color:var(--purple)">
+                                <div class="strat-name" style="color:var(--purple)">Market Hunter</div>
+                                <div class="strat-desc">Scans all coins, picks the best one every minute.</div>
+                            </div>
+                            <div class="strat-card" data-type="scalper" onclick="selectBtStrategy(this)">
                                 <div class="strat-name">Quick Scalper</div>
                                 <div class="strat-desc">Fast trades every few minutes for small profits.</div>
                             </div>
@@ -396,9 +400,14 @@
         <div class="form-group">
             <label>How should it trade?</label>
             <div class="strategy-cards" id="strategyCards">
-                <div class="strat-card active" data-type="scalper" onclick="selectStrategy(this)">
+                <div class="strat-card active" data-type="hunter" onclick="selectStrategy(this)" style="border-color:var(--purple)">
+                    <div class="strat-name" style="color:var(--purple)">Market Hunter</div>
+                    <div class="strat-desc">Scans ALL 20 top coins every minute. Picks the single best opportunity across the entire market. Hunts for profit everywhere.</div>
+                    <div class="strat-risk" style="color:var(--purple)">Risk: Medium | Speed: 1 trade/min | Smartest</div>
+                </div>
+                <div class="strat-card" data-type="scalper" onclick="selectStrategy(this)">
                     <div class="strat-name">Quick Scalper</div>
-                    <div class="strat-desc">Fast in-and-out trades every few minutes. Looks for tiny price moves and grabs small profits over and over. Most active.</div>
+                    <div class="strat-desc">Fast in-and-out trades every few minutes on one coin. Grabs small profits over and over.</div>
                     <div class="strat-risk">Risk: Medium | Speed: Fast</div>
                 </div>
                 <div class="strat-card" data-type="grid" onclick="selectStrategy(this)">

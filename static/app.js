@@ -351,6 +351,7 @@ function closeModal(id) { $(id).classList.remove('active'); }
 
 // Simple strategy names → internal types
 const STRATEGY_NAMES = {
+    hunter: 'Market Hunter',
     scalper: 'Quick Scalper',
     grid: 'Bounce Trader',
     dca_momentum: 'Dip Buyer',
@@ -379,6 +380,16 @@ function updateNewBotName() {
 
 // Smart defaults: user just picks amount, we figure out the rest
 function buildSmartParams(type, amount, symbol) {
+    if (type === 'hunter') {
+        return {
+            trade_amount: amount * 0.25,
+            min_score: 30,
+            take_profit_pct: 0.2,
+            stop_loss_pct: 0.25,
+            max_open_trades: 3,
+            max_hold_seconds: 600
+        };
+    }
     if (type === 'scalper') {
         return {
             trade_amount: amount * 0.2,  // 20% per trade
@@ -466,11 +477,14 @@ async function createBot() {
 
     const params = buildSmartParams(type, amount, symbol);
 
+    // Hunter scans ALL coins, so symbol is just a label
+    const displaySymbol = type === 'hunter' ? 'ALL/USDT' : symbol;
+
     const body = {
         bot_id: botId,
         bot_type: type,
         market: 'crypto',
-        symbol: symbol,
+        symbol: displaySymbol,
         params
     };
 

@@ -17,6 +17,9 @@ class BaseBot(ABC):
     Subclasses must implement tick().
     """
 
+    # Set to True in subclasses that manage their own price fetching (e.g. HunterBot)
+    self_managed_prices = False
+
     def __init__(self, bot_id, market, symbol, params, tick_interval=30):
         self.bot_id = bot_id
         self.market = market
@@ -134,18 +137,22 @@ class BaseBot(ABC):
                     self.pause()
                     break
 
-                # Get current price
-                price = get_current_price(self.market, self.symbol)
-                if price is None:
-                    log_activity(self.bot_id, 'error', f'Could not get price for {self.symbol}')
-                    self._stop_event.wait(self.tick_interval)
-                    continue
+                # Bots that manage their own prices (like Hunter) skip this
+                if self.self_managed_prices:
+                    self.tick(0)
+                else:
+                    # Get current price
+                    price = get_current_price(self.market, self.symbol)
+                    if price is None:
+                        log_activity(self.bot_id, 'error', f'Could not get price for {self.symbol}')
+                        self._stop_event.wait(self.tick_interval)
+                        continue
 
-                # Log that we're watching
-                log_activity(self.bot_id, 'watching', f'Checking {self.symbol}', price=price)
+                    # Log that we're watching
+                    log_activity(self.bot_id, 'watching', f'Checking {self.symbol}', price=price)
 
-                # Execute strategy tick
-                self.tick(price)
+                    # Execute strategy tick
+                    self.tick(price)
 
             except Exception as e:
                 logger.error(f"Bot {self.bot_id} tick error: {e}", exc_info=True)

@@ -35,7 +35,7 @@ def run_backtest(bot_type, symbol, params, candles, starting_balance=10000):
 
     close_prices = [c[4] for c in candles]
 
-    if bot_type == 'scalper':
+    if bot_type == 'hunter' or bot_type == 'scalper':
         trades, equity_curve = _backtest_scalper(close_prices, params, starting_balance)
     elif bot_type == 'grid':
         trades, equity_curve = _backtest_grid(close_prices, params, starting_balance)

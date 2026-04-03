@@ -13,6 +13,7 @@ from modules.risk_manager import get_risk_status
 from modules.data_feed import get_current_price, get_candles
 from modules.order_manager import place_order
 from modules.activity import get_activities
+from modules.market_scanner import get_latest_scan
 
 # Logging
 logging.basicConfig(
@@ -285,6 +286,13 @@ def activity():
     return jsonify(get_activities(limit=limit, bot_id=bot_id))
 
 
+# ── Market Scanner ──
+
+@app.route('/api/scanner')
+def scanner():
+    return jsonify(get_latest_scan())
+
+
 # ── Risk ──
 
 @app.route('/api/risk')
@@ -417,6 +425,9 @@ def _get_bot_class(bot_type):
     elif bot_type == 'scalper':
         from modules.bots.scalper_bot import ScalperBot
         return ScalperBot
+    elif bot_type == 'hunter':
+        from modules.bots.hunter_bot import HunterBot
+        return HunterBot
     return None
 
 
