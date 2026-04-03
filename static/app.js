@@ -811,6 +811,8 @@ async function loadLiveView() {
 
 function switchLiveBot() {
     currentLiveBot = $('liveBot').value;
+    // Reset chart when switching bots
+    if (liveChart) { liveChart.destroy(); liveChart = null; }
     if (!currentLiveBot) {
         $('liveStats').style.display = 'none';
         $('liveChartCard').style.display = 'none';
@@ -873,53 +875,61 @@ async function updateLiveChart() {
         if (idx >= 0) sellPoints[idx] = s.price;
     });
 
-    const ctx = $('liveChart').getContext('2d');
-    if (liveChart) liveChart.destroy();
-
-    liveChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels,
-            datasets: [
-                {
-                    label: 'Price',
-                    data: priceValues,
-                    borderColor: '#58a6ff',
-                    backgroundColor: 'rgba(88,166,255,0.05)',
-                    fill: true,
-                    tension: 0.2,
-                    pointRadius: 0,
-                    borderWidth: 2,
-                    order: 2
-                },
-                {
-                    label: 'Buy',
-                    data: buyPoints,
-                    borderColor: 'transparent',
-                    backgroundColor: '#3fb950',
-                    pointRadius: buyPoints.map(p => p ? 8 : 0),
-                    pointStyle: 'triangle',
-                    pointRotation: 0,
-                    showLine: false,
-                    order: 1
-                },
-                {
-                    label: 'Sell',
-                    data: sellPoints,
-                    borderColor: 'transparent',
-                    backgroundColor: '#f85149',
-                    pointRadius: sellPoints.map(p => p ? 8 : 0),
-                    pointStyle: 'triangle',
-                    pointRotation: 180,
-                    showLine: false,
-                    order: 1
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: { duration: 300 },
+    // Update existing chart smoothly instead of destroying/rebuilding
+    if (liveChart) {
+        liveChart.data.labels = labels;
+        liveChart.data.datasets[0].data = priceValues;
+        liveChart.data.datasets[1].data = buyPoints;
+        liveChart.data.datasets[1].pointRadius = buyPoints.map(p => p ? 8 : 0);
+        liveChart.data.datasets[2].data = sellPoints;
+        liveChart.data.datasets[2].pointRadius = sellPoints.map(p => p ? 8 : 0);
+        liveChart.update('none'); // no animation on update = no flash
+    } else {
+        const ctx = $('liveChart').getContext('2d');
+        liveChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Price',
+                        data: priceValues,
+                        borderColor: '#58a6ff',
+                        backgroundColor: 'rgba(88,166,255,0.05)',
+                        fill: true,
+                        tension: 0.2,
+                        pointRadius: 0,
+                        borderWidth: 2,
+                        order: 2
+                    },
+                    {
+                        label: 'Buy',
+                        data: buyPoints,
+                        borderColor: 'transparent',
+                        backgroundColor: '#3fb950',
+                        pointRadius: buyPoints.map(p => p ? 8 : 0),
+                        pointStyle: 'triangle',
+                        pointRotation: 0,
+                        showLine: false,
+                        order: 1
+                    },
+                    {
+                        label: 'Sell',
+                        data: sellPoints,
+                        borderColor: 'transparent',
+                        backgroundColor: '#f85149',
+                        pointRadius: sellPoints.map(p => p ? 8 : 0),
+                        pointStyle: 'triangle',
+                        pointRotation: 180,
+                        showLine: false,
+                        order: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
             plugins: {
                 legend: { display: false },
                 tooltip: {
@@ -951,6 +961,7 @@ async function updateLiveChart() {
             interaction: { intersect: false, mode: 'index' }
         }
     });
+    }
 
     // Update activity feed
     if (activities && activities.length) {

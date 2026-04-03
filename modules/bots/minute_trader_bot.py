@@ -78,177 +78,206 @@ class MinuteTraderBot(BaseBot):
         decision, confidence, reasons = self._analyse(current_price)
         positions = db.get_open_positions(bot_id=self.bot_id)
 
-        if decision == 'BUY' and len(positions) < self.max_positions:
-            self._execute_buy(current_price, confidence, reasons)
-        elif decision == 'SELL' and positions:
-            self._execute_sell_all(current_price, reasons)
+        # Separate long positions from short positions
+        longs = [p for p in positions if p['side'] == 'long']
+        shorts = [p for p in positions if p['side'] == 'short']
+
+        if decision == 'BUY':
+            # Close any shorts first (take profit on the short)
+            for pos in shorts:
+                pnl_d = (pos['entry_price'] - current_price) * pos['quantity']
+                self._close_trade(pos, current_price, pnl_d,
+                    f'Close short — switching to BUY ({", ".join(reasons[:2])})')
+            # Open long if we have room
+            if len(longs) < self.max_positions:
+                self._execute_trade(current_price, 'long', confidence, reasons)
+        elif decision == 'SELL':
+            # Close any longs first (take profit or cut loss)
+            for pos in longs:
+                pnl_d = (current_price - pos['entry_price']) * pos['quantity']
+                self._close_trade(pos, current_price, pnl_d,
+                    f'Close long — switching to SELL ({", ".join(reasons[:2])})')
+            # Open short if we have room
+            if len(shorts) < self.max_positions:
+                self._execute_trade(current_price, 'short', confidence, reasons)
         else:
-            # HOLD — log why
-            reason_str = ', '.join(reasons[:2]) if reasons else 'no clear signal'
-            action = 'watching'
+            # HOLD
+            reason_str = ', '.join(reasons[:2]) if reasons else 'no signal'
             if positions:
-                total_pnl = sum(
-                    ((current_price - p['entry_price']) / p['entry_price']) * 100
-                    for p in positions
-                )
-                action = 'watching'
-                log_activity(self.bot_id, action,
+                total_pnl = 0
+                for p in positions:
+                    if p['side'] == 'long':
+                        total_pnl += ((current_price - p['entry_price']) / p['entry_price']) * 100
+                    else:
+                        total_pnl += ((p['entry_price'] - current_price) / p['entry_price']) * 100
+                log_activity(self.bot_id, 'watching',
                     f'HOLD — {reason_str} | {len(positions)} open ({total_pnl:+.3f}%)',
                     price=current_price)
             else:
-                log_activity(self.bot_id, action,
-                    f'HOLD — {reason_str} | watching for entry',
+                log_activity(self.bot_id, 'watching',
+                    f'HOLD — {reason_str}',
                     price=current_price)
 
     def _analyse(self, price):
         """
-        Run all indicators and make a BUY/SELL/HOLD decision.
+        Micro-movement analysis for minute-by-minute trading.
+        Focuses on what's happening RIGHT NOW, not the overall trend.
         Returns (decision, confidence 0-100, reasons[]).
         """
         prices = self.price_history
-        buy_signals = 0
-        sell_signals = 0
+        buy_score = 0
+        sell_score = 0
         reasons = []
 
-        # 1. RSI
-        rsi_vals = rsi(prices, 10)
-        current_rsi = rsi_vals[-1]
+        # 1. RSI — fast period, focused on extremes and direction
+        rsi_vals = rsi(prices, 7)  # Very fast RSI
+        cur_rsi = rsi_vals[-1]
         prev_rsi = rsi_vals[-2] if len(rsi_vals) > 1 else None
 
-        if current_rsi is not None:
-            if current_rsi < 30:
-                buy_signals += 2
-                reasons.append(f'RSI oversold ({current_rsi:.0f})')
-            elif current_rsi < 40 and prev_rsi and current_rsi > prev_rsi:
-                buy_signals += 1
-                reasons.append(f'RSI recovering ({current_rsi:.0f})')
-            elif current_rsi > 75:
-                sell_signals += 2
-                reasons.append(f'RSI overbought ({current_rsi:.0f})')
-            elif current_rsi > 65:
-                sell_signals += 1
-                reasons.append(f'RSI high ({current_rsi:.0f})')
+        if cur_rsi is not None and prev_rsi is not None:
+            if cur_rsi < 30:
+                buy_score += 3
+                reasons.append(f'RSI oversold ({cur_rsi:.0f})')
+            elif cur_rsi < 45 and cur_rsi > prev_rsi:
+                buy_score += 2
+                reasons.append(f'RSI turning up ({cur_rsi:.0f})')
+            elif cur_rsi > 70:
+                sell_score += 3
+                reasons.append(f'RSI overbought ({cur_rsi:.0f})')
+            elif cur_rsi > 55 and cur_rsi < prev_rsi:
+                sell_score += 2
+                reasons.append(f'RSI turning down ({cur_rsi:.0f})')
 
-        # 2. EMA crossover
-        ema5 = ema(prices, 5)
-        ema20 = ema(prices, 20)
-        if ema5[-1] and ema20[-1]:
-            if ema5[-1] > ema20[-1]:
-                buy_signals += 1
-                if ema5[-2] and ema20[-2] and ema5[-2] <= ema20[-2]:
-                    buy_signals += 2  # Fresh cross = strong
-                    reasons.append('EMA just crossed up')
-                else:
-                    reasons.append('uptrend (EMA)')
+        # 2. Last 3 candles direction — simple and effective
+        if len(prices) >= 4:
+            up_count = sum(1 for i in range(-3, 0) if prices[i] > prices[i-1])
+            down_count = 3 - up_count
+
+            if up_count == 3:
+                buy_score += 3
+                reasons.append('3 ticks rising')
+            elif up_count >= 2 and prices[-1] > prices[-2]:
+                buy_score += 2
+                reasons.append('price rising')
+            elif down_count == 3:
+                sell_score += 3
+                reasons.append('3 ticks falling')
+            elif down_count >= 2 and prices[-1] < prices[-2]:
+                sell_score += 2
+                reasons.append('price falling')
+
+        # 3. Micro bounce / dip detection (last 5 prices)
+        if len(prices) >= 6:
+            window = prices[-6:]
+            low_idx = window.index(min(window))
+            high_idx = window.index(max(window))
+
+            # Bouncing off a micro low
+            if low_idx <= 3 and prices[-1] > prices[-2] and prices[-1] > min(window):
+                pct_off_low = (prices[-1] - min(window)) / min(window) * 100
+                if pct_off_low > 0.01:
+                    buy_score += 2
+                    reasons.append(f'bouncing +{pct_off_low:.3f}%')
+
+            # Falling from a micro high
+            if high_idx <= 3 and prices[-1] < prices[-2] and prices[-1] < max(window):
+                pct_off_high = (max(window) - prices[-1]) / max(window) * 100
+                if pct_off_high > 0.01:
+                    sell_score += 2
+                    reasons.append(f'dropping -{pct_off_high:.3f}%')
+
+        # 4. Fast EMA direction (3 vs 8 — reacts in minutes, not hours)
+        ema3 = ema(prices, 3)
+        ema8 = ema(prices, 8)
+        if ema3[-1] and ema8[-1]:
+            if ema3[-1] > ema8[-1]:
+                buy_score += 1
+                if ema3[-2] and ema8[-2] and ema3[-2] <= ema8[-2]:
+                    buy_score += 2
+                    reasons.append('fast EMA crossed up')
             else:
-                sell_signals += 1
-                if ema5[-2] and ema20[-2] and ema5[-2] >= ema20[-2]:
-                    sell_signals += 2
-                    reasons.append('EMA just crossed down')
-                else:
-                    reasons.append('downtrend (EMA)')
+                sell_score += 1
+                if ema3[-2] and ema8[-2] and ema3[-2] >= ema8[-2]:
+                    sell_score += 2
+                    reasons.append('fast EMA crossed down')
 
-        # 3. MACD
-        macd_line, signal_line, histogram = macd(prices)
-        if histogram[-1] is not None:
-            if histogram[-1] > 0 and (histogram[-2] is None or histogram[-1] > histogram[-2]):
-                buy_signals += 1
-                reasons.append('MACD bullish')
-            elif histogram[-1] < 0 and (histogram[-2] is None or histogram[-1] < histogram[-2]):
-                sell_signals += 1
-                reasons.append('MACD bearish')
-
-        # 4. Price momentum (last 3 vs last 10 candles)
+        # 5. Spread from average — is price stretched?
         if len(prices) >= 10:
-            mom_3 = (prices[-1] - prices[-3]) / prices[-3] * 100
-            mom_10 = (prices[-1] - prices[-10]) / prices[-10] * 100
+            avg_10 = sum(prices[-10:]) / 10
+            spread = (price - avg_10) / avg_10 * 100
+            if spread < -0.03:
+                buy_score += 1
+                reasons.append(f'below average ({spread:.3f}%)')
+            elif spread > 0.03:
+                sell_score += 1
+                reasons.append(f'above average (+{spread:.3f}%)')
 
-            if mom_3 > 0.05 and mom_10 > 0:
-                buy_signals += 1
-                reasons.append(f'price rising (+{mom_3:.2f}%)')
-            elif mom_3 < -0.05 and mom_10 < 0:
-                sell_signals += 1
-                reasons.append(f'price falling ({mom_3:.2f}%)')
-
-        # 5. Bollinger Band position
-        upper, middle, lower = bollinger_bands(prices, 20, 2)
-        if lower[-1] and upper[-1]:
-            band_pos = (price - lower[-1]) / (upper[-1] - lower[-1]) if upper[-1] != lower[-1] else 0.5
-            if band_pos < 0.1:
-                buy_signals += 2
-                reasons.append('at bottom of range')
-            elif band_pos < 0.3:
-                buy_signals += 1
-            elif band_pos > 0.9:
-                sell_signals += 2
-                reasons.append('at top of range')
-            elif band_pos > 0.7:
-                sell_signals += 1
-
-        # Make decision
-        total = buy_signals + sell_signals
+        # ── DECISION: 60/40 rule ──
+        total = buy_score + sell_score
         if total == 0:
-            return 'HOLD', 0, ['flat market']
+            return 'HOLD', 0, ['no signals']
 
-        if buy_signals >= 4 and buy_signals > sell_signals * 2:
-            return 'BUY', min(buy_signals * 15, 95), reasons
-        elif sell_signals >= 4 and sell_signals > buy_signals * 2:
-            return 'SELL', min(sell_signals * 15, 95), reasons
-        elif buy_signals > sell_signals + 2:
-            return 'BUY', min(buy_signals * 10, 70), reasons
-        elif sell_signals > buy_signals + 2:
-            return 'SELL', min(sell_signals * 10, 70), reasons
+        buy_pct = buy_score / total * 100
+        sell_pct = sell_score / total * 100
+
+        # Trade if we have 60%+ edge — that's our rule
+        if buy_pct >= 60 and buy_score >= 2:
+            return 'BUY', min(int(buy_pct), 95), reasons
+        elif sell_pct >= 60 and sell_score >= 2:
+            return 'SELL', min(int(sell_pct), 95), reasons
         else:
-            return 'HOLD', 0, reasons if reasons else ['mixed signals']
+            return 'HOLD', 0, [f'edge: {buy_pct:.0f}/{sell_pct:.0f} — waiting']
 
-    def _execute_buy(self, price, confidence, reasons):
-        """Buy with logging."""
+    def _execute_trade(self, price, side, confidence, reasons):
+        """Open a long or short position."""
         quantity = self.trade_amount / price
+        order_side = 'buy' if side == 'long' else 'sell'
+
         fill = place_order(
             self.bot_id, self.market, self.symbol,
-            'buy', quantity, price
+            order_side, quantity, price
         )
         if fill.get('success'):
             pos_id = db.open_position(
                 self.bot_id, self.market, self.symbol,
-                'long', quantity, fill['price']
+                side, quantity, fill['price']
             )
             self._open_times[pos_id] = time.time()
             reason_str = ', '.join(reasons[:2])
-            log_activity(self.bot_id, 'buy',
-                f'BUY — {reason_str} (confidence {confidence}%)',
+            action_word = 'BUY (long)' if side == 'long' else 'SELL (short)'
+            log_activity(self.bot_id, 'buy' if side == 'long' else 'sell',
+                f'{action_word} — {reason_str} ({confidence}% edge)',
                 price=price)
 
-    def _execute_sell_all(self, price, reasons):
-        """Sell all positions."""
-        positions = db.get_open_positions(bot_id=self.bot_id)
-        for pos in positions:
-            pnl_dollar = (price - pos['entry_price']) * pos['quantity']
-            self._close_trade(pos, price, pnl_dollar,
-                f'SELL signal — {", ".join(reasons[:2])}')
-
     def _check_exits(self, current_price):
-        """Check take-profit, stop-loss, and timeout."""
+        """Check take-profit, stop-loss, and timeout for both longs and shorts."""
         positions = db.get_open_positions(bot_id=self.bot_id)
         now = time.time()
 
         for pos in positions:
-            pnl_pct = ((current_price - pos['entry_price']) / pos['entry_price']) * 100
-            pnl_dollar = (current_price - pos['entry_price']) * pos['quantity']
+            # Calculate P&L based on direction
+            if pos['side'] == 'long':
+                pnl_pct = ((current_price - pos['entry_price']) / pos['entry_price']) * 100
+                pnl_dollar = (current_price - pos['entry_price']) * pos['quantity']
+            else:  # short
+                pnl_pct = ((pos['entry_price'] - current_price) / pos['entry_price']) * 100
+                pnl_dollar = (pos['entry_price'] - current_price) * pos['quantity']
+
             opened = self._open_times.get(pos['id'], now - 60)
             held = now - opened
             mins = held / 60
+            direction = pos['side'].upper()
 
             if pnl_pct >= self.take_profit:
                 self._close_trade(pos, current_price, pnl_dollar,
-                    f'Profit! +{pnl_pct:.3f}% (+${pnl_dollar:.2f}) in {mins:.0f}min')
+                    f'{direction} profit! +{pnl_pct:.3f}% (+${pnl_dollar:.2f}) in {mins:.0f}min')
             elif pnl_pct <= -self.stop_loss:
                 self._close_trade(pos, current_price, pnl_dollar,
-                    f'Stop loss: {pnl_pct:.3f}% (${pnl_dollar:.2f}) after {mins:.0f}min')
+                    f'{direction} stop loss: {pnl_pct:.3f}% (${pnl_dollar:.2f}) after {mins:.0f}min')
             elif held >= self.max_hold:
                 result = 'profit' if pnl_dollar > 0 else 'loss'
                 self._close_trade(pos, current_price, pnl_dollar,
-                    f'Timeout {mins:.0f}min: {result} {pnl_pct:.3f}%')
+                    f'{direction} timeout {mins:.0f}min: {result} {pnl_pct:.3f}%')
             else:
                 db.update_position_price(pos['id'], current_price)
 
