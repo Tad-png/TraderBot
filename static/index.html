@@ -27,6 +27,9 @@
         <div class="nav-item" data-page="trades">
             <span>Trades</span>
         </div>
+        <div class="nav-item" data-page="live">
+            <span>Live View</span>
+        </div>
         <div class="nav-item" data-page="backtest">
             <span>Test Strategy</span>
         </div>
@@ -180,6 +183,67 @@
                 <div style="margin-top:12px;text-align:center">
                     <button class="btn btn-sm" id="loadMoreTrades" onclick="loadMoreTrades()">Load More</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- LIVE VIEW PAGE -->
+        <div class="page" id="page-live">
+            <div class="page-header">
+                <h1>Live View</h1>
+                <div>
+                    <select id="liveBot" onchange="switchLiveBot()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:6px">
+                        <option value="">Select a running bot...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid-3" id="liveStats" style="display:none">
+                <div class="card stat">
+                    <div class="stat-value" id="livePrice">-</div>
+                    <div class="stat-label">Current Price</div>
+                </div>
+                <div class="card stat">
+                    <div class="stat-value" id="livePnl">$0.00</div>
+                    <div class="stat-label">Session Profit</div>
+                </div>
+                <div class="card stat">
+                    <div class="stat-value" id="liveTrades">0</div>
+                    <div class="stat-label">Trades Made</div>
+                </div>
+            </div>
+
+            <div class="card" id="liveChartCard" style="display:none">
+                <div class="card-header">
+                    <h2 id="liveChartTitle">Price Chart</h2>
+                    <span class="badge badge-running" style="font-size:10px">LIVE</span>
+                </div>
+                <div style="position:relative;height:400px">
+                    <canvas id="liveChart"></canvas>
+                </div>
+                <div style="margin-top:8px;display:flex;gap:16px;font-size:12px;color:var(--text-dim)">
+                    <span><span style="color:var(--green);font-size:16px">&#9650;</span> Buy</span>
+                    <span><span style="color:var(--red);font-size:16px">&#9660;</span> Sell</span>
+                    <span style="margin-left:auto">Updates every 5 seconds</span>
+                </div>
+            </div>
+
+            <div class="grid-2" id="liveDetails" style="display:none">
+                <div class="card">
+                    <div class="card-header"><h2>Recent Activity</h2></div>
+                    <div id="liveFeed" style="max-height:300px;overflow-y:auto"></div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h2>Market Scores</h2></div>
+                    <div id="liveScores" style="max-height:300px;overflow-y:auto">
+                        <p class="loading">Run a Market Hunter to see scores</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="liveEmpty" class="card" style="text-align:center;padding:60px">
+                <p style="font-size:16px;margin-bottom:12px">No bots running yet</p>
+                <p style="color:var(--text-dim);margin-bottom:16px">Start a bot to see live trading in action</p>
+                <button class="btn btn-primary" onclick="showPage('bots')">Go to Bots</button>
             </div>
         </div>
 
@@ -400,9 +464,14 @@
         <div class="form-group">
             <label>How should it trade?</label>
             <div class="strategy-cards" id="strategyCards">
-                <div class="strat-card active" data-type="hunter" onclick="selectStrategy(this)" style="border-color:var(--purple)">
+                <div class="strat-card active" data-type="minute_trader" onclick="selectStrategy(this)" style="border-color:var(--green)">
+                    <div class="strat-name" style="color:var(--green)">Minute Trader</div>
+                    <div class="strat-desc">Sits on one coin and decides BUY or SELL every minute. Run one on BTC, one on ETH, one on SOL — watch them all compete. Easiest to watch.</div>
+                    <div class="strat-risk" style="color:var(--green)">Risk: Medium | 1 decision/min | Best for watching</div>
+                </div>
+                <div class="strat-card" data-type="hunter" onclick="selectStrategy(this)" style="border-color:var(--purple)">
                     <div class="strat-name" style="color:var(--purple)">Market Hunter</div>
-                    <div class="strat-desc">Scans ALL 20 top coins every minute. Picks the single best opportunity across the entire market. Hunts for profit everywhere.</div>
+                    <div class="strat-desc">Scans ALL 20 top coins every minute. Picks the single best opportunity across the entire market.</div>
                     <div class="strat-risk" style="color:var(--purple)">Risk: Medium | Speed: 1 trade/min | Smartest</div>
                 </div>
                 <div class="strat-card" data-type="scalper" onclick="selectStrategy(this)">

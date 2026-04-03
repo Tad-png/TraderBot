@@ -54,3 +54,23 @@ def get_bot_state(bot_id):
             if item['bot_id'] == bot_id:
                 return item
     return None
+
+
+def get_price_history(bot_id, limit=120):
+    """Get price ticks for charting — returns prices and trade markers."""
+    with _lock:
+        items = [a for a in _activity_log if a['bot_id'] == bot_id and a.get('price')]
+
+    prices = []
+    buys = []
+    sells = []
+
+    for a in items[-limit:]:
+        point = {'time': a['time'], 'price': a['price']}
+        prices.append(point)
+        if a['action'] == 'buy':
+            buys.append(point)
+        elif a['action'] in ('profit', 'loss', 'sell'):
+            sells.append(point)
+
+    return {'prices': prices, 'buys': buys, 'sells': sells}

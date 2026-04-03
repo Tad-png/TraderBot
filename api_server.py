@@ -12,7 +12,7 @@ from modules.portfolio import get_portfolio_value, get_portfolio_breakdown, star
 from modules.risk_manager import get_risk_status
 from modules.data_feed import get_current_price, get_candles
 from modules.order_manager import place_order
-from modules.activity import get_activities
+from modules.activity import get_activities, get_price_history
 from modules.market_scanner import get_latest_scan
 
 # Logging
@@ -286,6 +286,13 @@ def activity():
     return jsonify(get_activities(limit=limit, bot_id=bot_id))
 
 
+# ── Live Chart Data ──
+
+@app.route('/api/chart/<bot_id>')
+def chart_data(bot_id):
+    return jsonify(get_price_history(bot_id))
+
+
 # ── Market Scanner ──
 
 @app.route('/api/scanner')
@@ -428,6 +435,9 @@ def _get_bot_class(bot_type):
     elif bot_type == 'hunter':
         from modules.bots.hunter_bot import HunterBot
         return HunterBot
+    elif bot_type == 'minute_trader':
+        from modules.bots.minute_trader_bot import MinuteTraderBot
+        return MinuteTraderBot
     return None
 
 

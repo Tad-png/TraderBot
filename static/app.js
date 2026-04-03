@@ -20,6 +20,7 @@ function showPage(page) {
     if (page === 'portfolio') loadPortfolio();
     if (page === 'bots') loadBots();
     if (page === 'trades') { tradeOffset = 0; loadTrades(); }
+    if (page === 'live') loadLiveView();
     if (page === 'backtest') { loadPastBacktests(); }
     if (page === 'risk') loadRisk();
     if (page === 'settings') loadSettings();
@@ -351,6 +352,7 @@ function closeModal(id) { $(id).classList.remove('active'); }
 
 // Simple strategy names → internal types
 const STRATEGY_NAMES = {
+    minute_trader: 'Minute Trader',
     hunter: 'Market Hunter',
     scalper: 'Quick Scalper',
     grid: 'Bounce Trader',
@@ -380,6 +382,15 @@ function updateNewBotName() {
 
 // Smart defaults: user just picks amount, we figure out the rest
 function buildSmartParams(type, amount, symbol) {
+    if (type === 'minute_trader') {
+        return {
+            trade_amount: amount * 0.25,
+            take_profit_pct: 0.3,
+            stop_loss_pct: 0.2,
+            max_positions: 2,
+            max_hold_minutes: 15
+        };
+    }
     if (type === 'hunter') {
         return {
             trade_amount: amount * 0.25,
@@ -767,6 +778,213 @@ function renderChart(canvasId, data, label) {
 function refreshAll() {
     const activePage = document.querySelector('.page.active')?.id?.replace('page-', '');
     if (activePage) showPage(activePage);
+}
+
+// ── Live View ──
+
+let liveInterval = null;
+let liveChart = null;
+let currentLiveBot = null;
+
+async function loadLiveView() {
+    // Populate bot dropdown
+    const bots = await api('/api/bots');
+    const sel = $('liveBot');
+    sel.innerHTML = '<option value="">Select a running bot...</option>';
+    if (bots) {
+        bots.filter(b => b.status === 'running').forEach(b => {
+            const opt = document.createElement('option');
+            opt.value = b.id;
+            opt.textContent = `${b.id} (${STRATEGY_NAMES[b.bot_type] || b.bot_type})`;
+            if (currentLiveBot === b.id) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    }
+
+    const hasRunning = bots && bots.some(b => b.status === 'running');
+    $('liveEmpty').style.display = hasRunning ? 'none' : 'block';
+
+    if (currentLiveBot) {
+        updateLiveChart();
+    }
+}
+
+function switchLiveBot() {
+    currentLiveBot = $('liveBot').value;
+    if (!currentLiveBot) {
+        $('liveStats').style.display = 'none';
+        $('liveChartCard').style.display = 'none';
+        $('liveDetails').style.display = 'none';
+        $('liveEmpty').style.display = 'block';
+        if (liveInterval) { clearInterval(liveInterval); liveInterval = null; }
+        return;
+    }
+
+    $('liveStats').style.display = '';
+    $('liveChartCard').style.display = '';
+    $('liveDetails').style.display = '';
+    $('liveEmpty').style.display = 'none';
+
+    updateLiveChart();
+
+    // Start fast refresh for live view
+    if (liveInterval) clearInterval(liveInterval);
+    liveInterval = setInterval(updateLiveChart, 5000);
+}
+
+async function updateLiveChart() {
+    if (!currentLiveBot) return;
+
+    const [chartData, activities, summary, scanData] = await Promise.all([
+        api(`/api/chart/${currentLiveBot}`),
+        api(`/api/activity?limit=20&bot=${currentLiveBot}`),
+        api('/api/trades/summary'),
+        api('/api/scanner')
+    ]);
+
+    if (!chartData || !chartData.prices.length) return;
+
+    // Update stats
+    const lastPrice = chartData.prices[chartData.prices.length - 1];
+    $('livePrice').textContent = '$' + Number(lastPrice.price).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (summary) {
+        $('livePnl').textContent = pnlSign(summary.all_time_pnl) + fmt(summary.all_time_pnl);
+        $('livePnl').className = 'stat-value ' + pnlClass(summary.all_time_pnl);
+        $('liveTrades').textContent = summary.total_trades;
+    }
+
+    // Build chart
+    const labels = chartData.prices.map(p => {
+        const d = new Date(p.time * 1000);
+        return d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    });
+    const priceValues = chartData.prices.map(p => p.price);
+
+    // Buy/sell markers as separate datasets
+    const buyPoints = new Array(priceValues.length).fill(null);
+    const sellPoints = new Array(priceValues.length).fill(null);
+
+    chartData.buys.forEach(b => {
+        const idx = chartData.prices.findIndex(p => Math.abs(p.time - b.time) < 2);
+        if (idx >= 0) buyPoints[idx] = b.price;
+    });
+    chartData.sells.forEach(s => {
+        const idx = chartData.prices.findIndex(p => Math.abs(p.time - s.time) < 2);
+        if (idx >= 0) sellPoints[idx] = s.price;
+    });
+
+    const ctx = $('liveChart').getContext('2d');
+    if (liveChart) liveChart.destroy();
+
+    liveChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Price',
+                    data: priceValues,
+                    borderColor: '#58a6ff',
+                    backgroundColor: 'rgba(88,166,255,0.05)',
+                    fill: true,
+                    tension: 0.2,
+                    pointRadius: 0,
+                    borderWidth: 2,
+                    order: 2
+                },
+                {
+                    label: 'Buy',
+                    data: buyPoints,
+                    borderColor: 'transparent',
+                    backgroundColor: '#3fb950',
+                    pointRadius: buyPoints.map(p => p ? 8 : 0),
+                    pointStyle: 'triangle',
+                    pointRotation: 0,
+                    showLine: false,
+                    order: 1
+                },
+                {
+                    label: 'Sell',
+                    data: sellPoints,
+                    borderColor: 'transparent',
+                    backgroundColor: '#f85149',
+                    pointRadius: sellPoints.map(p => p ? 8 : 0),
+                    pointStyle: 'triangle',
+                    pointRotation: 180,
+                    showLine: false,
+                    order: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 300 },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => {
+                            if (ctx.datasetIndex === 1) return 'BUY @ $' + ctx.raw.toFixed(2);
+                            if (ctx.datasetIndex === 2) return 'SELL @ $' + ctx.raw.toFixed(2);
+                            return '$' + ctx.raw.toFixed(2);
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    display: true,
+                    ticks: { color: '#8b949e', maxTicksLimit: 10, font: { size: 10 } },
+                    grid: { color: 'rgba(48,54,61,0.3)' }
+                },
+                y: {
+                    display: true,
+                    ticks: {
+                        color: '#8b949e',
+                        font: { size: 11 },
+                        callback: val => '$' + val.toLocaleString()
+                    },
+                    grid: { color: 'rgba(48,54,61,0.3)' }
+                }
+            },
+            interaction: { intersect: false, mode: 'index' }
+        }
+    });
+
+    // Update activity feed
+    if (activities && activities.length) {
+        $('liveFeed').innerHTML = activities.map(a => {
+            const dot = a.action || 'watching';
+            return `<div class="activity-item">
+                <div class="activity-dot dot-${dot}"></div>
+                <div class="activity-content">
+                    <span class="activity-detail">${a.details || a.action}</span>
+                    ${a.price ? `<span class="activity-price"> @ $${Number(a.price).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>` : ''}
+                </div>
+                <span class="activity-time">${formatAgo(a.time)}</span>
+            </div>`;
+        }).join('');
+    }
+
+    // Scanner scores
+    if (scanData && scanData.results && scanData.results.length) {
+        $('liveScores').innerHTML = scanData.results.map(r => {
+            const coin = r.symbol.split('/')[0];
+            const barWidth = Math.min(r.score, 100);
+            const barColor = r.score >= 40 ? 'var(--green)' : r.score >= 25 ? 'var(--yellow)' : 'var(--text-dim)';
+            return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
+                <span style="width:45px;font-weight:600">${coin}</span>
+                <div style="flex:1;height:6px;background:var(--border);border-radius:3px">
+                    <div style="width:${barWidth}%;height:100%;background:${barColor};border-radius:3px"></div>
+                </div>
+                <span style="width:30px;text-align:right;color:${barColor}">${r.score}</span>
+                <span style="width:45px;text-align:right;color:var(--text-dim);font-size:11px">RSI ${r.rsi}</span>
+            </div>`;
+        }).join('');
+    }
+
+    $('liveChartTitle').textContent = `Live — ${currentLiveBot}`;
 }
 
 // Auto-refresh every 10 seconds for live feel
