@@ -218,6 +218,9 @@ def start_bot(bot_id):
 
     tick_config = load_config().get('bot_tick_interval_seconds', {})
     tick_interval = tick_config.get(config['market'], 30)
+    # Scalper runs faster — every 15 seconds
+    if config['bot_type'] == 'scalper':
+        tick_interval = 15
 
     bot = bot_class(
         bot_id=bot_id,
@@ -411,6 +414,9 @@ def _get_bot_class(bot_type):
     elif bot_type == 'mean_reversion':
         from modules.bots.mean_reversion_bot import MeanReversionBot
         return MeanReversionBot
+    elif bot_type == 'scalper':
+        from modules.bots.scalper_bot import ScalperBot
+        return ScalperBot
     return None
 
 

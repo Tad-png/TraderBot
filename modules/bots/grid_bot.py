@@ -45,7 +45,26 @@ class GridBot(BaseBot):
         self.last_price = None
 
     def on_start(self):
-        """Set up the grid levels."""
+        """Set up the grid levels. Auto-detects price range if not sensible."""
+        from modules.data_feed import get_current_price
+
+        # Auto-detect: if the range doesn't make sense, build it around current price
+        current = get_current_price(self.market, self.symbol)
+        if current:
+            range_pct = 0.05  # 5% above and below current price
+            needs_auto = (
+                self.upper <= self.lower or
+                current < self.lower or
+                current > self.upper or
+                (self.upper - self.lower) / current > 0.5  # range too wide
+            )
+            if needs_auto:
+                self.lower = round(current * (1 - range_pct), 2)
+                self.upper = round(current * (1 + range_pct), 2)
+                log_activity(self.bot_id, 'signal',
+                    f'Auto-set range ${self.lower:,.0f} - ${self.upper:,.0f} around ${current:,.0f}',
+                    price=current)
+
         if self.upper <= self.lower:
             logger.error(f"Grid bot {self.bot_id}: upper must be > lower")
             return
@@ -59,12 +78,10 @@ class GridBot(BaseBot):
         # Amount per grid level
         self.quantity_per_grid = (self.investment / self.grid_count) / ((self.upper + self.lower) / 2)
 
-        logger.info(
-            f"Grid bot {self.bot_id}: {self.grid_count} levels from "
-            f"${self.lower:.2f} to ${self.upper:.2f}, "
-            f"grid size ${self.grid_size:.2f}, "
-            f"qty/level {self.quantity_per_grid:.6f}"
-        )
+        log_activity(self.bot_id, 'started',
+            f'Grid ready: {self.grid_count} levels from ${self.lower:,.0f} to ${self.upper:,.0f}',
+            price=current)
+        logger.info(f"Grid bot {self.bot_id}: {self.grid_count} levels ${self.lower:.0f}-${self.upper:.0f}")
 
     def tick(self, current_price):
         """Check if price has crossed any grid levels since last tick."""

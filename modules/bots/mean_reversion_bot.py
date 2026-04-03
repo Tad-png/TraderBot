@@ -38,7 +38,20 @@ class MeanReversionBot(BaseBot):
         self.stop_loss = params.get('stop_loss_pct', 1.5)
         self.max_positions = params.get('max_positions', 3)
 
-        self.price_history = []
+        self.price_history = self._preload_prices()
+
+    def _preload_prices(self):
+        """Pre-load recent price history so indicators work immediately."""
+        try:
+            from modules.data_feed import get_candles
+            candles = get_candles(self.market, self.symbol, '1m', limit=100)
+            if candles:
+                prices = [c[4] for c in candles]  # close prices
+                log_activity(self.bot_id, 'signal', f'Loaded {len(prices)} recent prices — ready to trade')
+                return prices
+        except Exception as e:
+            pass
+        return []
 
     def tick(self, current_price):
         """Check Bollinger Band signals."""

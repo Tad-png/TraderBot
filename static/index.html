@@ -195,7 +195,11 @@
                     <div class="form-group">
                         <label>Pick a strategy</label>
                         <div class="strategy-cards" id="btStrategyCards">
-                            <div class="strat-card active" data-type="grid" onclick="selectBtStrategy(this)">
+                            <div class="strat-card active" data-type="scalper" onclick="selectBtStrategy(this)">
+                                <div class="strat-name">Quick Scalper</div>
+                                <div class="strat-desc">Fast trades every few minutes for small profits.</div>
+                            </div>
+                            <div class="strat-card" data-type="grid" onclick="selectBtStrategy(this)">
                                 <div class="strat-name">Bounce Trader</div>
                                 <div class="strat-desc">Buys dips, sells bounces. Repeats.</div>
                             </div>
@@ -392,7 +396,12 @@
         <div class="form-group">
             <label>How should it trade?</label>
             <div class="strategy-cards" id="strategyCards">
-                <div class="strat-card active" data-type="grid" onclick="selectStrategy(this)">
+                <div class="strat-card active" data-type="scalper" onclick="selectStrategy(this)">
+                    <div class="strat-name">Quick Scalper</div>
+                    <div class="strat-desc">Fast in-and-out trades every few minutes. Looks for tiny price moves and grabs small profits over and over. Most active.</div>
+                    <div class="strat-risk">Risk: Medium | Speed: Fast</div>
+                </div>
+                <div class="strat-card" data-type="grid" onclick="selectStrategy(this)">
                     <div class="strat-name">Bounce Trader</div>
                     <div class="strat-desc">Buys when price dips, sells when it bounces back up. Repeats automatically. Best when prices go sideways.</div>
                     <div class="strat-risk">Risk: Low-Medium</div>

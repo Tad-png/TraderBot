@@ -39,9 +39,22 @@ class DCAMomentumBot(BaseBot):
         self.take_profit = params.get('take_profit_pct', 5)
         self.stop_loss = params.get('stop_loss_pct', 3)
 
-        self.price_history = []
+        self.price_history = self._preload_prices()
         self.consecutive_dips = 0
         self.last_rsi = None
+
+    def _preload_prices(self):
+        """Pre-load recent prices so RSI works immediately."""
+        try:
+            from modules.data_feed import get_candles
+            candles = get_candles(self.market, self.symbol, '1m', limit=100)
+            if candles:
+                prices = [c[4] for c in candles]
+                log_activity(self.bot_id, 'signal', f'Loaded {len(prices)} recent prices — ready to trade')
+                return prices
+        except Exception:
+            pass
+        return []
 
     def tick(self, current_price):
         """Check RSI signals and execute trades."""

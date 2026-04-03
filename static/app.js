@@ -341,6 +341,7 @@ function closeModal(id) { $(id).classList.remove('active'); }
 
 // Simple strategy names → internal types
 const STRATEGY_NAMES = {
+    scalper: 'Quick Scalper',
     grid: 'Bounce Trader',
     dca_momentum: 'Dip Buyer',
     funding_arb: 'Passive Earner',
@@ -368,6 +369,15 @@ function updateNewBotName() {
 
 // Smart defaults: user just picks amount, we figure out the rest
 function buildSmartParams(type, amount, symbol) {
+    if (type === 'scalper') {
+        return {
+            trade_amount: amount * 0.2,  // 20% per trade
+            take_profit_pct: 0.5,
+            stop_loss_pct: 0.3,
+            max_open_trades: 3,
+            cooldown_ticks: 2
+        };
+    }
     if (type === 'grid') {
         // Auto-calculate grid range as +/- 5% from a reference price
         // The bot will adjust on first tick anyway

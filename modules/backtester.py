@@ -35,7 +35,9 @@ def run_backtest(bot_type, symbol, params, candles, starting_balance=10000):
 
     close_prices = [c[4] for c in candles]
 
-    if bot_type == 'grid':
+    if bot_type == 'scalper':
+        trades, equity_curve = _backtest_scalper(close_prices, params, starting_balance)
+    elif bot_type == 'grid':
         trades, equity_curve = _backtest_grid(close_prices, params, starting_balance)
     elif bot_type == 'dca_momentum':
         trades, equity_curve = _backtest_dca(close_prices, params, starting_balance)
@@ -253,6 +255,73 @@ def _backtest_mean_reversion(prices, params, balance):
                         'quantity': pos['qty'], 'pnl': round(pnl, 4), 'side': 'long'
                     })
                 positions.clear()
+
+        pos_value = sum(p['qty'] * price for p in positions)
+        equity_curve.append(round(balance + pos_value, 2))
+
+    return trades, equity_curve
+
+
+def _backtest_scalper(prices, params, balance):
+    """Backtest quick scalper strategy."""
+    from modules.indicators import rsi as calc_rsi, ema as calc_ema
+
+    trade_amount = params.get('trade_amount', balance * 0.02)
+    take_profit = params.get('take_profit_pct', 0.5)
+    stop_loss = params.get('stop_loss_pct', 0.3)
+    max_open = params.get('max_open_trades', 3)
+
+    rsi_values = calc_rsi(prices, 10)
+    ema_short = calc_ema(prices, 5)
+    ema_long = calc_ema(prices, 15)
+
+    trades = []
+    equity_curve = [balance]
+    positions = []
+    cooldown = 0
+
+    for i in range(1, len(prices)):
+        price = prices[i]
+        cooldown = max(0, cooldown - 1)
+
+        # Check exits
+        for pos in list(positions):
+            pnl_pct = ((price - pos['entry']) / pos['entry']) * 100
+            if pnl_pct >= take_profit or pnl_pct <= -stop_loss:
+                proceeds = pos['qty'] * price * 0.999
+                pnl = proceeds - (pos['qty'] * pos['entry'] * 1.001)
+                balance += proceeds
+                trades.append({
+                    'entry_price': pos['entry'], 'exit_price': price,
+                    'quantity': pos['qty'], 'pnl': round(pnl, 4), 'side': 'long'
+                })
+                positions.remove(pos)
+
+        # Entry signals
+        r = rsi_values[i] if i < len(rsi_values) else None
+        es = ema_short[i] if i < len(ema_short) else None
+        el = ema_long[i] if i < len(ema_long) else None
+        prev_es = ema_short[i-1] if i-1 < len(ema_short) else None
+        prev_el = ema_long[i-1] if i-1 < len(ema_long) else None
+        prev_r = rsi_values[i-1] if i-1 < len(rsi_values) else None
+
+        if r and cooldown == 0 and len(positions) < max_open:
+            rsi_bounce = prev_r and prev_r < 35 and r > prev_r
+            ema_cross = (es and el and prev_es and prev_el and
+                         prev_es <= prev_el and es > el)
+            dip_recovery = (i >= 5 and
+                            price > min(prices[i-5:i]) and
+                            (price - min(prices[i-5:i])) / min(prices[i-5:i]) > 0.001 and
+                            prices[i] > prices[i-1])
+
+            signals = sum([bool(rsi_bounce), bool(ema_cross), bool(dip_recovery)])
+            if signals >= 1:
+                buy_amount = min(trade_amount, balance * 0.1)
+                if balance >= buy_amount * 1.001:
+                    qty = buy_amount / price
+                    balance -= buy_amount * 1.001
+                    positions.append({'entry': price, 'qty': qty})
+                    cooldown = 2
 
         pos_value = sum(p['qty'] * price for p in positions)
         equity_curve.append(round(balance + pos_value, 2))
